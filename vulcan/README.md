@@ -5,8 +5,16 @@
 A developer-productivity agent for codebases that cannot leave the machine.
 It indexes a repository, then reasons over it with a ReAct tool loop:
 semantic search, file reads, grep, test runs and edits, answering with
-`file:line` citations. Every token, embeddings included, is generated on an
-AMD Radeon GPU through vLLM on ROCm. Nothing is sent to a cloud API.
+`file:line` citations. Agent reasoning and generation run on an AMD Radeon GPU
+through vLLM on ROCm. Nothing is sent to a cloud API.
+
+To be precise about the split, because it is easy to overstate: `vllm serve
+Qwen/Qwen3-8B` runs with task=generate and exposes no `/v1/embeddings` route
+(verified, it returns 404). Embeddings therefore come from a separate
+endpoint, and since Radeon Cloud allows one active instance per account, the
+measured setup runs generation on the GPU and embeddings on a local model.
+Both endpoints are operator-controlled so no source leaves your machines, but
+only generation is GPU-served here. See `spec-document.md` section 2.1.
 
 Source: **https://github.com/himanshu748/vulcan**
 

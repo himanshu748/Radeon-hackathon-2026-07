@@ -10,12 +10,39 @@ Developers working on private or regulated codebases cannot send source code to 
 
 ```
 user ── CLI (typer) ── Agent (ReAct loop, JSON tool protocol)
-                          ├─ RAG index (SQLite + cosine, embeddings from GPU backend)
+                          ├─ RAG index (SQLite + cosine, embeddings endpoint, see 2.1)
                           ├─ Tools (search_code, read_file, grep, run_cmd*, write_file)   *allowlisted
                           ├─ Memory (durable per-project notes)
                           └─ LLM client ── OpenAI-compatible endpoint
                                              └─ vLLM on ROCm / Radeon GPU
 ```
+
+### 2.1 Where each half actually runs
+
+Stated precisely, because the privacy claim depends on it and it is easy to
+overstate.
+
+`vllm serve Qwen/Qwen3-8B` starts with task=generate. The resulting server
+advertises `/v1/chat/completions`, `/v1/completions`, `/v1/responses`,
+`/v1/messages`, `/tokenize` and `/v1/models`, and **no `/v1/embeddings`**;
+that route returns 404. Confirmed against the live instance rather than
+assumed.
+
+Serving embeddings from vLLM requires a second process started with
+`--task embed` against an embedding model, and Radeon Cloud permits one active
+instance per account. So in the configuration measured here:
+
+| stage | runs on |
+|---|---|
+| agent reasoning and generation | Radeon GPU, vLLM on ROCm |
+| RAG embeddings at index time | local embedding model |
+| retrieval, chunking, tool execution | local CPU |
+
+Both endpoints are ones the operator controls, so the no-egress property
+holds: no source code reaches a third party. But only generation is
+GPU-served in this setup, and the project does not claim otherwise. Pointing
+`VULCAN_EMBED_MODEL` at an `--task embed` vLLM instance moves embeddings onto
+the GPU too, at the cost of a second instance.
 
 ## 3. Capabilities
 

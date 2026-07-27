@@ -26,6 +26,17 @@ class LLM:
             headers={"Authorization": f"Bearer {cfg.api_key}"},
             timeout=300,
         )
+        # Same client unless embeddings are pointed elsewhere, so the common
+        # single-endpoint case opens exactly one connection pool as before.
+        self._embed_client = (
+            self._client
+            if cfg.embed_base_url == cfg.base_url
+            else httpx.Client(
+                base_url=cfg.embed_base_url,
+                headers={"Authorization": f"Bearer {cfg.embed_api_key}"},
+                timeout=300,
+            )
+        )
 
     def chat(self, messages: list[dict], stream: bool = False) -> ChatResult:
         payload = {
@@ -77,7 +88,14 @@ class LLM:
         )
 
     def embed(self, texts: list[str]) -> list[list[float]]:
-        r = self._client.post("/embeddings", json={"model": self.cfg.embed_model, "input": texts})
+        r = self._embed_client.post("/embeddings", json={"model": self.cfg.embed_model, "input": texts})
+        if r.status_code == 404:
+            raise RuntimeError(
+                f"No /v1/embeddings route at {self.cfg.embed_base_url}. A vLLM server "
+                "started with task=generate does not serve embeddings. Set "
+                "VULCAN_EMBED_BASE_URL (and VULCAN_EMBED_API_KEY) to an embeddings-capable "
+                "endpoint, for example a local Ollama at http://localhost:11434/v1."
+            )
         r.raise_for_status()
         data = sorted(r.json()["data"], key=lambda d: d["index"])
         return [d["embedding"] for d in data]

@@ -16,6 +16,13 @@ class Config:
     api_key: str = field(default_factory=lambda: os.getenv("VULCAN_API_KEY", "local"))
     model: str = field(default_factory=lambda: os.getenv("VULCAN_MODEL", "qwen3:4b-instruct"))
     embed_model: str = field(default_factory=lambda: os.getenv("VULCAN_EMBED_MODEL", "mxbai-embed-large"))
+    # Embeddings can live on a different server than chat. A vLLM instance
+    # started with task=generate serves no /v1/embeddings route at all, and
+    # Radeon Cloud allows one active instance, so the working split is
+    # generation on the GPU and embeddings on a local model. Defaults to
+    # base_url, which keeps single-endpoint setups exactly as they were.
+    embed_base_url: str = field(default_factory=lambda: os.getenv("VULCAN_EMBED_BASE_URL", ""))
+    embed_api_key: str = field(default_factory=lambda: os.getenv("VULCAN_EMBED_API_KEY", ""))
     data_dir: Path = field(default_factory=lambda: Path(os.getenv("VULCAN_DATA_DIR", "~/.vulcan")).expanduser())
     max_steps: int = int(os.getenv("VULCAN_MAX_STEPS", "12"))
     temperature: float = float(os.getenv("VULCAN_TEMPERATURE", "0.2"))
@@ -30,6 +37,8 @@ class Config:
 
     def __post_init__(self) -> None:
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        self.embed_base_url = self.embed_base_url or self.base_url
+        self.embed_api_key = self.embed_api_key or self.api_key
 
 
 def load() -> Config:

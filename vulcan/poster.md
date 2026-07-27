@@ -10,7 +10,8 @@ retyped by hand.
 Developers on private or regulated codebases cannot paste source into a cloud
 LLM. So they either stop using AI assistance, or they leak.
 
-Vulcan is a codebase agent where every token is generated on-device.
+Vulcan is a codebase agent that generates every token on hardware you control,
+never a third-party LLM API.
 
 ## 2. What it does
 
@@ -44,6 +45,12 @@ vLLM 0.16.1 on ROCm 7.2.1, serving `Qwen/Qwen3-8B` at
 
 The agent needs no code change to target it: `vulcan/llm.py` speaks
 OpenAI-compatible chat and embeddings against any `base_url`.
+
+One honest caveat: `vllm serve Qwen/Qwen3-8B` runs task=generate and exposes no
+`/v1/embeddings` route (verified, 404). Radeon Cloud allows one active instance
+per account, so the measured setup runs generation on the GPU and embeddings on
+a separate local model. Both are operator-controlled, so no source leaves your
+machines, but only generation is GPU-served here.
 
 ## 5. Concurrency is the whole argument
 

@@ -42,11 +42,15 @@ EOF
 cat > /tmp/vulcan-end.txt <<'EOF'
 Measured, not claimed
 
-Concurrency 1 to 8 on the Radeon:  23.5 to 179.2 chunks/s
-7.63x throughput at 95% scaling efficiency, TTFT 1.49s to 0.41s
+Concurrency 1 to 8 on the Radeon, just measured on screen:
+23.2 to 161.5 chunks/s aggregate, a 6.96x gain at 8x load,
+per-request rate holding 23.2 to 20.2
 
 Same harness on an M4 Air with Ollama:
 one extra request LOWERS throughput, TTFT 4.36s to 42.21s
+
+Three runs across two clients: 6.96x, 7.23x, 7.63x
+Raw JSON in bench-results/
 
 github.com/himanshu748/vulcan
 EOF

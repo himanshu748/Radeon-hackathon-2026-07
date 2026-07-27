@@ -8,6 +8,9 @@ import httpx
 
 from .config import Config
 
+RETRIES = 3
+RETRY_BACKOFF_S = 1.5
+
 
 @dataclass
 class ChatResult:
@@ -39,6 +42,25 @@ class LLM:
         )
 
     def chat(self, messages: list[dict], stream: bool = False) -> ChatResult:
+        """Retries transport failures, because a remote GPU is reached over a
+        link that drops. Observed against the Radeon Cloud proxy as
+        `ConnectError: [SSL: UNEXPECTED_EOF_WHILE_READING]` part way through an
+        agent run. A stream is only retried while nothing has been emitted
+        yet, so a half-delivered answer is never silently duplicated.
+        """
+        last: Exception | None = None
+        for attempt in range(RETRIES):
+            try:
+                return self._chat_once(messages, stream)
+            except httpx.TransportError as exc:
+                last = exc
+                if attempt < RETRIES - 1:
+                    time.sleep(RETRY_BACKOFF_S * (attempt + 1))
+        raise RuntimeError(
+            f"{self.cfg.base_url} failed after {RETRIES} attempts: {last}"
+        ) from last
+
+    def _chat_once(self, messages: list[dict], stream: bool = False) -> ChatResult:
         payload = {
             "model": self.cfg.model,
             "messages": messages,
@@ -65,20 +87,27 @@ class LLM:
         ttft = None
         chunks: list[str] = []
         n_tokens = 0
-        with self._client.stream("POST", "/chat/completions", json=payload) as r:
-            r.raise_for_status()
-            for line in r.iter_lines():
-                if not line.startswith("data: ") or line == "data: [DONE]":
-                    continue
-                import json as _json
+        try:
+            with self._client.stream("POST", "/chat/completions", json=payload) as r:
+                r.raise_for_status()
+                for line in r.iter_lines():
+                    if not line.startswith("data: ") or line == "data: [DONE]":
+                        continue
+                    import json as _json
 
-                delta = _json.loads(line[6:])["choices"][0].get("delta", {})
-                piece = delta.get("content")
-                if piece:
-                    if ttft is None:
-                        ttft = time.perf_counter() - start
-                    chunks.append(piece)
-                    n_tokens += 1
+                    delta = _json.loads(line[6:])["choices"][0].get("delta", {})
+                    piece = delta.get("content")
+                    if piece:
+                        if ttft is None:
+                            ttft = time.perf_counter() - start
+                        chunks.append(piece)
+                        n_tokens += 1
+        except httpx.TransportError:
+            # Nothing delivered yet, so the caller can safely start over.
+            if not chunks:
+                raise
+            # Content already streamed. Retrying would duplicate it, so return
+            # the truncated answer rather than losing the whole turn.
         return ChatResult(
             text="".join(chunks),
             prompt_tokens=0,

@@ -72,6 +72,15 @@ Two honesty caveats that shape how the numbers should be read:
   SSE deltas, not tokenizer tokens. Deltas can coalesce in transit, so the
   proxied Radeon figure is a slight undercount relative to the local run.
 
+The link to a remote GPU is not reliable, and the agent had to be hardened
+for it rather than assumed away. During a recorded demo run the proxy dropped
+mid-request with `ConnectError: [SSL: UNEXPECTED_EOF_WHILE_READING]`, killing
+an agent turn outright while the identical endpoint served a benchmark
+seconds later. `LLM.chat` now retries transport failures three times with
+linear backoff, and a stream is only retried while nothing has been emitted,
+so a half-delivered answer is returned truncated rather than silently
+duplicated.
+
 Cold start matters and is reported rather than hidden: the first two
 repetitions of each prompt carry cache-warming cost, and the run is only
 stable from roughly the third repetition. Taking the median of 5 keeps a

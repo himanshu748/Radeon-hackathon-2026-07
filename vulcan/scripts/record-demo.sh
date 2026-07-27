@@ -8,7 +8,17 @@
 # Everything else is derived or already committed.
 set -euo pipefail
 
-: "${VULCAN_API_KEY:?Set VULCAN_API_KEY to the Radeon instance key, e.g. VULCAN_API_KEY=sk-... bash scripts/record-demo.sh}"
+cd "$(dirname "$0")/.."
+
+# .env is gitignored; see .env.example for the shape. Keeping the key in a
+# file rather than on the command line keeps it out of shell history.
+if [ -f .env ]; then
+  set -a
+  . ./.env
+  set +a
+fi
+
+: "${VULCAN_API_KEY:?Set VULCAN_API_KEY in .env (see .env.example) to the Radeon instance key}"
 
 export VULCAN_BASE_URL="${VULCAN_BASE_URL:-https://radeon-global.anruicloud.com/spaces/u-8047-dc574cbf/8000/v1}"
 export VULCAN_MODEL="${VULCAN_MODEL:-Qwen/Qwen3-8B}"
@@ -20,7 +30,13 @@ export VULCAN_EMBED_BASE_URL="${VULCAN_EMBED_BASE_URL:-http://localhost:11434/v1
 export VULCAN_EMBED_API_KEY="${VULCAN_EMBED_API_KEY:-local}"
 export VULCAN_EMBED_MODEL="${VULCAN_EMBED_MODEL:-mxbai-embed-large}"
 
-cd "$(dirname "$0")/.."
+# The tape runs `vulcan` in a fresh shell, so make the project venv win.
+if [ -x ".venv/bin/vulcan" ]; then
+  export PATH="$PWD/.venv/bin:$PATH"
+elif ! command -v vulcan >/dev/null; then
+  echo "FAILED: no vulcan binary. Run: python3 -m venv .venv && .venv/bin/pip install -e ." >&2
+  exit 1
+fi
 
 echo "==> checking the Radeon endpoint"
 served=$(curl -sf -m 20 "$VULCAN_BASE_URL/models" -H "Authorization: Bearer $VULCAN_API_KEY" \

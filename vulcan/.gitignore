@@ -8,3 +8,4 @@ bench-results/*
 dist/
 demo-raw.mp4
 demo.mp4
+dist-pdf/

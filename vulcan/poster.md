@@ -1,9 +1,11 @@
-# Vulcan, deck source
+# Vulcan
 
-Supplementary material for the AMD AI DevMaster submission (Track 2, Private
-AI Agents). One `##` per slide. Export to PPT or poster at the end; keeping it
-as text means the numbers can be regenerated from `bench-results/` instead of
-retyped by hand.
+**Supplementary slides. AMD AI DevMaster Hackathon, Track 2, Private AI Agents.**
+
+A codebase agent that generates every token on hardware you control. One
+section per slide. Every figure here is reproducible from the committed JSON
+in `bench-results/` with `vulcan bench-compare`, so nothing in these slides
+was typed in by hand.
 
 ## 1. The problem
 
@@ -71,6 +73,10 @@ many ReAct steps at once.
 
 At two concurrent requests: **1.2s against 42.2s**, a 34x gap in what the user
 waits, with the Radeon carrying twice the parameters.
+
+Measured three times across two independent clients: **6.96x, 7.23x, 7.63x**.
+The 6.96x run is the one visible on screen in the demo video, produced by the
+shipped CLI rather than by a benchmarking harness written for the occasion.
 
 ## 5b. Two more measured wins
 

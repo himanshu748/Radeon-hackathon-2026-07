@@ -98,6 +98,44 @@ Stated plainly because it affects how the numbers read:
   decode numbers are therefore not a clean hardware isolation and are not
   presented as one. See `spec-document.md` section 4.2.
 
+## Dependencies
+
+Python 3.10 or newer. Four runtime packages, declared in `pyproject.toml`:
+
+| package | version | used for |
+|---|---|---|
+| `httpx` | >=0.27 | streaming HTTP to the OpenAI-compatible endpoint |
+| `numpy` | >=1.26 | cosine similarity over the embedding index |
+| `typer` | >=0.12 | CLI |
+| `rich` | >=13.7 | terminal output |
+
+Development adds `pytest` >=8.0. There is no vector database, no LangChain and
+no agent framework: the index is SQLite plus numpy, and the ReAct loop is about
+a hundred lines in `vulcan/agent.py`.
+
+A backend is also required, one of:
+
+- **Ollama** for local development, serving both chat and embeddings
+- **vLLM on ROCm** for GPU generation, plus a local embeddings endpoint
+
+## Environment configuration
+
+Every value is read from the environment; nothing is hardcoded. Copy
+`.env.example` to `.env` and fill it in.
+
+| variable | default | meaning |
+|---|---|---|
+| `VULCAN_BASE_URL` | `http://localhost:11434/v1` | chat endpoint |
+| `VULCAN_API_KEY` | `local` | key for that endpoint |
+| `VULCAN_MODEL` | `qwen3:4b-instruct` | generation model |
+| `VULCAN_EMBED_BASE_URL` | falls back to `VULCAN_BASE_URL` | embeddings endpoint |
+| `VULCAN_EMBED_API_KEY` | falls back to `VULCAN_API_KEY` | key for that endpoint |
+| `VULCAN_EMBED_MODEL` | `mxbai-embed-large` | embedding model |
+| `VULCAN_ENABLE_THINKING` | unset (sends nothing) | `false` cuts agent-step latency ~3.5x on Qwen3 via vLLM |
+| `VULCAN_TEMPERATURE` | `0.2` | sampling temperature |
+| `VULCAN_MAX_STEPS` | `12` | ReAct step ceiling |
+| `VULCAN_DATA_DIR` | `~/.vulcan` | index and memory storage |
+
 ## Tests
 
 ```bash

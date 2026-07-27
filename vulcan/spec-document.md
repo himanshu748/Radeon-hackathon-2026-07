@@ -1,4 +1,4 @@
-# Vulcan, project specification (Track 2, Agentic AI)
+# Vulcan, project specification (Track 2, Private AI Agents)
 
 > Submission requirement: project specification document with scenarios, architecture, capabilities and optimization details.
 
@@ -10,11 +10,14 @@ Developers working on private or regulated codebases cannot send source code to 
 
 ```
 user ── CLI (typer) ── Agent (ReAct loop, JSON tool protocol)
-                          ├─ RAG index (SQLite + cosine, embeddings endpoint, see 2.1)
-                          ├─ Tools (search_code, read_file, grep, run_cmd*, write_file)   *allowlisted
-                          ├─ Memory (durable per-project notes)
+                          ├─ RAG index    SQLite + cosine, embeddings (2.1)
+                          ├─ Tools        search_code, read_file, grep,
+                          │               run_cmd*, write_file
+                          ├─ Memory       durable per-project notes
                           └─ LLM client ── OpenAI-compatible endpoint
-                                             └─ vLLM on ROCm / Radeon GPU
+                                            └─ vLLM on ROCm / Radeon GPU
+
+* run_cmd is allowlisted; all file access is path-jailed to the indexed root.
 ```
 
 ### 2.1 Where each half actually runs
@@ -43,6 +46,55 @@ holds: no source code reaches a third party. But only generation is
 GPU-served in this setup, and the project does not claim otherwise. Pointing
 `VULCAN_EMBED_MODEL` at an `--task embed` vLLM instance moves embeddings onto
 the GPU too, at the cost of a second instance.
+
+### 2.2 Model choice and deployment plan
+
+**Generation model: `Qwen/Qwen3-8B`.** Chosen for three reasons specific to
+this workload. It is small enough to serve from a single consumer Radeon at
+bf16 (7.67 GiB of weights, leaving room for KV cache at
+`--gpu-memory-utilization 0.92`), its 40960-token context comfortably holds
+retrieved code chunks plus a ReAct scratchpad, and it follows the strict JSON
+tool protocol in `vulcan/agent.py` reliably enough to drive the loop without
+native tool-calling support.
+
+Qwen3 reasons by default, which is the wrong trade here and is disabled per
+request; see section 4.3.
+
+**Embedding model: `mxbai-embed-large`,** served locally. Section 2.1 explains
+why it cannot share the Radeon instance.
+
+**Deploying on the Radeon (ROCm).** Image
+`vllm-dev:rocm7.2.1_navi_ubuntu22.04_py3.10_pytorch_2.9_vllm_0.16.0`, one GPU:
+
+```bash
+vllm serve Qwen/Qwen3-8B --host 0.0.0.0 --port 8000 --gpu-memory-utilization 0.92
+```
+
+Cold start is roughly four minutes: weights load in about 55s, then
+`torch.compile` builds and caches the graphs. Subsequent starts reuse that
+cache and load weights in about 5s. Point the agent at it:
+
+```bash
+export VULCAN_BASE_URL=https://<host>/spaces/<instance-id>/8000/v1
+export VULCAN_API_KEY=<per-instance key>
+export VULCAN_MODEL=Qwen/Qwen3-8B
+export VULCAN_ENABLE_THINKING=false
+export VULCAN_EMBED_BASE_URL=http://localhost:11434/v1
+```
+
+No code change is required: `vulcan/llm.py` speaks OpenAI-compatible chat
+against any `base_url`. The full operational runbook, including the launch
+rate limits and boot failure modes actually hit during development, is in
+`radeon-deploy.md`.
+
+**Deploying locally (no GPU).** Ollama serves both halves from one endpoint,
+which is the development configuration and the laptop baseline in section 4:
+
+```bash
+ollama pull qwen3:4b-instruct && ollama pull mxbai-embed-large
+export VULCAN_BASE_URL=http://localhost:11434/v1
+export VULCAN_MODEL=qwen3:4b-instruct
+```
 
 ## 3. Capabilities
 

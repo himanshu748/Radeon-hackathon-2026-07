@@ -49,7 +49,7 @@ per-request rate holding 23.2 to 20.2
 Same harness on an M4 Air with Ollama:
 one extra request LOWERS throughput, TTFT 4.36s to 42.21s
 
-Three runs across two clients: 6.96x, 7.23x, 7.63x
+Two independent clients, both committed: 6.96x and 7.63x
 Raw JSON in bench-results/
 
 github.com/himanshu748/vulcan

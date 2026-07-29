@@ -4,7 +4,7 @@
 
 A codebase agent that generates every token on hardware you control. One
 section per slide. Every figure here is reproducible from the committed JSON
-in `bench-results/` with `vulcan bench-compare`, so nothing in these slides
+in `bench-results/` with `vulcan bench-compare`, so almost nothing in these slides
 was typed in by hand.
 
 ## 1. The problem
@@ -38,7 +38,8 @@ user -- CLI -- Agent (ReAct, JSON tool protocol)
 
 One environment variable switches the backend. The same agent runs on Ollama
 during development and vLLM-ROCm in production, which is what made the
-measurements in slide 5 an apples-to-apples swap.
+measurements in slide 5 a one-variable swap at the client. The two backends
+do not serve identical weights, which spec.md section 4.2 sets out in full.
 
 ## 4. Running on Radeon
 
@@ -46,7 +47,8 @@ vLLM 0.16.1 on ROCm 7.2.1, serving `Qwen/Qwen3-8B` at
 `--gpu-memory-utilization 0.92`.
 
 The agent needs no code change to target it: `vulcan/llm.py` speaks
-OpenAI-compatible chat and embeddings against any `base_url`.
+OpenAI-compatible chat against any `base_url`, with a separate client for
+embeddings so the two can point at different servers.
 
 One honest caveat: `vllm serve Qwen/Qwen3-8B` runs task=generate and exposes no
 `/v1/embeddings` route (verified, 404). Radeon Cloud allows one active instance
@@ -67,14 +69,18 @@ many ReAct steps at once.
 | 8 | not run | **179.2** chunks/s, TTFT **0.41s** |
 
 - Radeon: **7.63x throughput across an 8x load increase, 95% efficiency.**
-  TTFT *improves* 3.6x. Batch wall clock stays ~57s for 1 request or 8.
+  TTFT *improves* 3.6x. Batch wall clock moves only 51s to 65s for 1 request
+  or 8, against 8x the work.
 - Laptop: one extra request makes aggregate throughput *fall* and TTFT grow
   nearly 10x. No continuous batching, so requests queue instead of sharing.
 
 At two concurrent requests: **1.2s against 42.2s**, a 34x gap in what the user
 waits, with the Radeon carrying twice the parameters.
 
-Measured three times across two independent clients: **6.96x, 7.23x, 7.63x**.
+Measured on two independent clients, both with committed JSON: **6.96x**
+(`demo-live.json`, recorded on camera) and **7.63x**
+(`radeon-vllm-concurrency.json`). An earlier 1-to-8 run measured 7.23x but
+its JSON was not persisted, so it is not counted here.
 The 6.96x run is the one visible on screen in the demo video, produced by the
 shipped CLI rather than by a benchmarking harness written for the occasion.
 
@@ -103,7 +109,9 @@ retrieved context and TTFT stays under half a second.
   every reported TTFT. It was measured separately and is stated.
 - "Tokens/sec" counts streamed SSE deltas, not tokenizer tokens.
 - Cold start is reported, not hidden: the first two repetitions of each prompt
-  carry cache-warming cost. Median of 5.
+  carry cache-warming cost. Repeat counts are per run and recorded in each
+  JSON file: 5 for the Radeon decode set, 3 for prefill, 2 for the laptop
+  decode baseline, 1 per level for concurrency.
 
 ## 7. What is next
 

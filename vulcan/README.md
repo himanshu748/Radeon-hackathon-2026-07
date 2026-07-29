@@ -1,102 +1,69 @@
 # Vulcan
 
-**Track 2, Private AI Agents. AMD AI DevMaster Hackathon 2026.**
+A private developer-productivity agent. It indexes your codebase, then reasons, searches, reads, runs tests and answers with cited context, with **every token generated on hardware you control**, never a third-party LLM API. Built for the AMD AI DevMaster Hackathon, Track 2: Development & Local Deployment of Private AI Agents. Inference runs on AMD Radeon GPUs via ROCm.
 
-A developer-productivity agent for codebases that cannot leave the machine.
-It indexes a repository, then reasons over it with a ReAct tool loop:
-semantic search, file reads, grep, test runs and edits, answering with
-`file:line` citations. Agent reasoning and generation run on an AMD Radeon GPU
-through vLLM on ROCm. Nothing is sent to a cloud API.
+## Why local
 
-To be precise about the split, because it is easy to overstate: `vllm serve
-Qwen/Qwen3-8B` runs with task=generate and exposes no `/v1/embeddings` route
-(verified, it returns 404). Embeddings therefore come from a separate
-endpoint, and since Radeon Cloud allows one active instance per account, the
-measured setup runs generation on the GPU and embeddings on a local model.
-Both endpoints are operator-controlled so no source leaves your machines, but
-only generation is GPU-served here. See `spec-document.md` section 2.1.
+Your code never leaves machines you control. Agent reasoning and generation run
+on one OpenAI-compatible endpoint you own: Ollama on a laptop during
+development, vLLM on ROCm for production. Switching backends is one environment
+variable.
 
-Source: **https://github.com/himanshu748/vulcan**
+Embeddings are configured separately, and on the Radeon they are not served by
+the same process. `vllm serve Qwen/Qwen3-8B` starts with task=generate, so the
+server exposes `/v1/chat/completions` but **no `/v1/embeddings`** (verified:
+that route returns 404). Serving embeddings from vLLM needs a second process
+started with `--task embed` on an embedding model, and Radeon Cloud allows one
+active instance per account. So in the measured setup generation runs on the
+Radeon while `VULCAN_EMBED_MODEL` points at a local embedding model. Both are
+endpoints you control, and no source ever reaches a third party, but only
+generation is GPU-served in this configuration. Point `VULCAN_EMBED_MODEL` at
+an `--task embed` vLLM instance to move embeddings onto the GPU as well.
 
-## Why this exists
+Model sizing matters more than backend flags on a laptop: on a 16GB machine pick a model that leaves headroom (a 4B instruct model runs a full agent turn in ~26s where a 12B thinking model swaps and takes minutes). Prefer non-thinking instruct variants for the agent loop; reasoning preambles multiply per-step latency.
 
-Developers on private or regulated codebases have two bad options: paste
-source into a hosted LLM, or go without assistance. Vulcan removes the
-choice. The agent is backend-agnostic over one OpenAI-compatible endpoint, so
-the same binary runs against Ollama on a laptop during development and vLLM
-on ROCm in production. Switching is one environment variable, which is also
-what made the measurements below a controlled swap rather than a rewrite.
+## The hardware
+
+Every Radeon number in this project was measured on one instance, whose identity
+is committed verbatim in [`bench-results/radeon-device.txt`](bench-results/radeon-device.txt):
+`gfx1100` (RDNA 3, Navi 31), 48.0 GiB VRAM, 48 compute units, torch
+`2.10.0+rocm7.2.4`, HIP `7.2.53211`.
 
 ## Quick start
 
 ```bash
 pip install -e .
-cp .env.example .env          # then edit
-vulcan index ~/code/myproject
+
+# Point at any OpenAI-compatible server (default: Ollama on localhost)
+export VULCAN_BASE_URL=http://localhost:11434/v1
+export VULCAN_MODEL=qwen3:4b-instruct
+export VULCAN_EMBED_MODEL=mxbai-embed-large
+
+vulcan index ~/code/myproject        # build the semantic index
 cd ~/code/myproject
 vulcan ask "where is auth token validation done?"
+vulcan chat                          # multi-turn session with persistent memory
 ```
 
-Against the Radeon box:
+## On the Radeon box (ROCm)
 
 ```bash
-export VULCAN_BASE_URL=https://<host>/spaces/<instance-id>/8000/v1
-export VULCAN_API_KEY=<per-instance key>
+# vLLM with ROCm serves the same API
+export VULCAN_BASE_URL=http://localhost:8000/v1
 export VULCAN_MODEL=Qwen/Qwen3-8B
+vulcan bench --label radeon-vllm-fp16   # TTFT + tokens/sec, saved to bench-results/
 ```
+
+`vulcan bench` produces comparable JSON across backends and configs (quantization, batch size, ROCm flags), which drives the optimization section of the submission.
 
 ## Architecture
 
-```
-user -- CLI -- Agent (ReAct, JSON tool protocol)
-                 |- RAG index (SQLite + cosine, no vector DB dependency)
-                 |- Tools (search_code, read_file, grep, run_cmd*, write_file)
-                 |- Memory (durable per-project notes)
-                 `- LLM client -- OpenAI-compatible endpoint
-                                    `- vLLM on ROCm / Radeon GPU
-```
-
-`*` allowlisted commands only; file access is path-jailed to the indexed root.
-
-The JSON tool protocol matters: it means the agent works on backends without
-native tool-calling support, which is most local serving stacks.
-
-## ROCm work
-
-Full detail in [`spec-document.md`](spec-document.md), raw JSON in
-[`bench-results/`](bench-results/), all of it reproducible with the harness
-that ships in the repo:
-
-```bash
-vulcan bench              --label <name>    # decode: TTFT + generation rate
-vulcan bench-concurrency  --label <name>    # aggregate throughput vs parallel load
-vulcan bench-prefill      --label <name>    # TTFT vs input length
-vulcan bench-compare      <a.json> <b.json> # markdown table
-```
-
-Two findings are worth the reviewer's time:
-
-1. **Qwen3 thinking mode is the wrong default for an agent.** Disabling it
-   per request via `chat_template_kwargs` cut wall-clock latency 3.5x on the
-   same hardware with *identical* generation rate. The win is token count,
-   not speed.
-2. **Concurrency is where the GPU argument actually lives.** The laptop's
-   aggregate throughput *falls* when a second request arrives and TTFT grows
-   nearly 10x, because Ollama does not batch. vLLM's continuous batching on
-   ROCm keeps the curve going the right way.
-
-## Honest measurement
-
-Stated plainly because it affects how the numbers read:
-
-- Radeon figures are collected through the Radeon Cloud HTTPS proxy. The
-  instance SSH port is refused from the client network and the Jupyter port
-  returns 403, so no on-box run was possible. Proxy round-trip was measured
-  separately and is included in every reported TTFT.
-- "chunks/s" counts streamed SSE content deltas, not tokenizer tokens.
-- The Radeon runs Qwen3-8B and the laptop runs qwen3:4b-instruct. Absolute
-  decode numbers are therefore not a clean hardware isolation and are not
-  presented as one. See `spec-document.md` section 4.2.
+- `vulcan/llm.py`: one thin client for chat + embeddings against any OpenAI-compatible server
+- `vulcan/rag.py`: line-chunked codebase index, embeddings in SQLite, cosine search (no vector-DB dependency)
+- `vulcan/agent.py`: ReAct loop with a JSON tool protocol (works on backends without native tool-calling)
+- `vulcan/tools.py`: sandboxed tools, path-jail on file access, allowlisted commands only
+- `vulcan/memory.py`: durable per-project notes that survive across sessions
+- `vulcan/bench.py`: TTFT / throughput harness for the ROCm optimization writeup
 
 ## Dependencies
 
@@ -110,13 +77,13 @@ Python 3.10 or newer. Four runtime packages, declared in `pyproject.toml`:
 | `rich` | >=13.7 | terminal output |
 
 Development adds `pytest` >=8.0. There is no vector database, no LangChain and
-no agent framework: the index is SQLite plus numpy, and the ReAct loop is about
+no agent framework: the index is SQLite plus numpy and the ReAct loop is about
 a hundred lines in `vulcan/agent.py`.
 
 A backend is also required, one of:
 
 - **Ollama** for local development, serving both chat and embeddings
-- **vLLM on ROCm** for GPU generation, plus a local embeddings endpoint
+- **vLLM on ROCm** for GPU generation, plus a local embeddings endpoint (see above)
 
 ## Environment configuration
 

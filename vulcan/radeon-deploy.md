@@ -55,15 +55,16 @@ Two operational gotchas:
 - Launch is rate limited: roughly four attempts in a few minutes returns 429.
   Back off rather than retrying in a loop.
 
-**Current blocker:** every gallery template fails in about 4 seconds with
-`error_code: workspace_init_failed`, `reason: WorkspaceInitFailed`,
-`detail: "Workspace preparation failed in workspace-hydrate"`. Reproduced
-from a genuinely clean state (`status: not_found`, no instance). Container
-logs come back empty, so it dies before the container starts. All 10 gallery
-templates are `instance_type: opencode` and none serves vLLM, so the untested
-hypothesis is that hydration is broken specifically for the opencode
-workspace path and a custom `vLLM Model API` template may take a different
-code path. That is the next thing to try.
+**Resolved: the gallery templates cannot serve vLLM.** Every `opencode`
+gallery template failed in about 4 seconds with `error_code:
+workspace_init_failed`, `reason: WorkspaceInitFailed`, `detail: "Workspace
+preparation failed in workspace-hydrate"`, reproduced from a clean state
+(`status: not_found`, no instance), with empty container logs. All 10 gallery
+templates are `instance_type: opencode` and none serves vLLM.
+
+The fix was to stop using the gallery and create a custom **vLLM Model API**
+template, which takes a different code path and hydrates normally. Everything
+measured in this submission ran on an instance created that way.
 
 ## 1. Launch the instance
 
@@ -91,12 +92,16 @@ code path. That is the next thing to try.
 ```bash
 export VULCAN_BASE_URL=http://<instance-host>:8000/v1
 export VULCAN_MODEL=Qwen/Qwen3-8B
-export VULCAN_EMBED_MODEL=Qwen/Qwen3-8B   # or a dedicated embedding model if the template serves one
+# Do NOT point embeddings at this endpoint. `vllm serve Qwen/Qwen3-8B` starts
+# with task=generate and exposes no /v1/embeddings route, so it 404s and
+# vulcan/llm.py raises naming this variable. Leave embeddings on a local model:
+export VULCAN_EMBED_MODEL=mxbai-embed-large
+export VULCAN_EMBED_BASE_URL=http://localhost:11434/v1
 ```
 
-No code changes: `vulcan/llm.py` speaks OpenAI-compatible chat + embeddings
-to any `base_url`, so this is the same CLI used against Ollama in
-development.
+No code changes: `vulcan/llm.py` speaks OpenAI-compatible chat against any
+`base_url`, and keeps a separate client for embeddings precisely so the two can
+point at different servers, which is what this split needs.
 
 ## 3. Re-index and re-run
 
@@ -158,10 +163,10 @@ fp16, then a measured quantization tradeoff, not just "it runs".
 
 ## Credit budget
 
-5 credits confirmed in the account (see Section 0). What one credit buys is
-still unknown, because no instance has booted successfully yet, so the burn
-rate cannot be measured until the hydrate failure is resolved. Treat them as
-scarce: destroy the instance between sessions, don't leave it idle. Sequence
+5 credits confirmed in the account (see Section 0). One credit is one GPU-hour,
+measured against the running instance: a full benchmark session (boot, model
+load, four bench runs) fits inside one credit with room to spare. Treat them as
+scarce anyway: destroy the instance between sessions, don't leave it idle. Sequence
 per session: launch -> re-index -> ask/chat smoke test -> bench -> destroy.
 
 On the first successful boot, read `credits` from `/api/me` immediately

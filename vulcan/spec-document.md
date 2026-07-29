@@ -109,17 +109,41 @@ export VULCAN_MODEL=qwen3:4b-instruct
 
 Every number below comes from `vulcan bench`, which streams three fixed
 prompts (short, medium, long) and records time-to-first-token and generation
-rate, taking the median of 5 repeats. The harness is the same code on both
-platforms, so the only variable is the backend.
+rate. Repeat counts differ by run and are recorded in each JSON file: the
+Radeon decode set is `repeats: 5`, both prefill sets are 3, the laptop decode
+baseline is 2, and the concurrency sweeps take one sample per level. The harness
+is the same code on both platforms, so the only variable is the backend.
+
+**The hardware.** Captured on the instance itself and committed verbatim to
+`bench-results/radeon-device.txt`:
+
+```
+gcnArchName:            gfx1100        # RDNA 3, Navi 31
+total_memory_GiB:       48.0
+multi_processor_count:  48
+torch:                  2.10.0+rocm7.2.4.git3d3aa833
+hip:                    7.2.53211
+Card Model:             0x744b
+```
+
+`rocm-smi` cannot reach libdrm inside the container, so it reports the PCI model
+id rather than a marketing name. The torch device properties are what the ROCm
+driver actually reports.
 
 Two honesty caveats that shape how the numbers should be read:
 
 - **The Radeon runs are measured over an HTTPS proxy, not on the box.** The
   instance's SSH port is not reachable from the client network, so the client
-  talks to vLLM through the Radeon Cloud spaces proxy. Median round-trip to
-  that proxy was measured at **0.216s** immediately before the run, and that
-  RTT sits inside every reported TTFT. GPU-side TTFT is therefore roughly
-  `reported - 0.216`.
+  talks to vLLM through the Radeon Cloud spaces proxy. Median round-trip to that
+  proxy was **0.31s** during the benchmark run (`proxy_rtt_s_median` in
+  `bench-results/radeon-vllm-qwen3-8b-nothink.json`).
+
+  That is larger than the short and medium Radeon TTFTs reported below (0.306s
+  and 0.292s), so **the single-stream TTFT column is inside proxy noise and
+  should not be read as a GPU measurement at all.** Only the long-prompt TTFT
+  (0.422s) sits clear of it. The decode-rate and concurrency numbers are not
+  affected the same way, because they measure sustained streaming over many
+  seconds rather than a single round trip.
 - **"Tokens/sec" is really content-deltas/sec.** The harness counts streamed
   SSE deltas, not tokenizer tokens. Deltas can coalesce in transit, so the
   proxied Radeon figure is a slight undercount relative to the local run.
@@ -187,7 +211,14 @@ mismatch is disclosed here.
 
 ### 4.3 Results
 
-All four tables below regenerate from committed JSON with `vulcan bench-compare`.
+The decode, prefill and concurrency tables regenerate from committed JSON with
+`vulcan bench-compare`; the exact command is given above each one. The
+thinking-mode table in 4.4 does **not**: it was measured live during the
+recorded session and the harness does not persist the delta-count and wall-clock
+columns it reports (`vulcan/bench.py` stores `ttft_s_median`, `chunks_per_s_median`
+and `repeats` only). It is kept because the effect is large and reproducible by
+rerunning the two commands shown, but it is not evidence in the same sense as
+the others.
 
 #### Decode, single stream
 
@@ -221,7 +252,8 @@ Read the two curves rather than any single cell:
 - **Radeon**: 23.5 to 179.2 chunks/s across an 8x load increase, a **7.63x
   scaling factor, 95% efficiency**. Per-request rate barely moves (23.5 to
   22.4). Median TTFT *improves* 3.6x. Wall clock for the whole batch stays
-  around 57s whether it is serving 1 request or 8.
+  between 51s and 65s whether it is serving 1 request or 8, against an 8x
+  increase in work. The on-camera run spans 49s to 63s.
 - **Laptop**: adding a single extra request *reduces* aggregate throughput to
   0.70x and pushes TTFT from 4.36s to 42.21s. Levels above 2 were not run
   because the curve had already inverted.
@@ -254,17 +286,33 @@ Identical generation rate. Thinking emits ~3.5x more tokens for the same
 task, so per-step latency falls by the same factor. Reproducible from the CLI
 with `VULCAN_ENABLE_THINKING=false`.
 
-### 4.4 Remaining sweeps
+### 4.4 What was not measured, and why
 
-- [ ] Quantization sweep: fp16 vs int8/awq, quality vs speed
-- [ ] vLLM tuning: gpu-memory-utilization, max-num-seqs, chunked prefill
-- [ ] Embedding throughput on GPU vs CPU
-- [ ] Before/after charts for the demo video
+Stating the boundary rather than implying the map is complete:
 
-## 5. Demo video outline (3 to 5 min)
+- **No quantization sweep.** fp16 against int8 or AWQ would be the obvious next
+  result, and it needs a second model download and a second serving config, so
+  it is two more GPU-hours against a five-credit budget already spent on the
+  concurrency and thinking-mode results, which are the two that changed a
+  decision in the agent.
+- **No vLLM serving-config sweep** (`--gpu-memory-utilization`,
+  `--max-num-seqs`, chunked prefill). Same reason. The concurrency curve here is
+  the stock config, so every number in 4.3 is a floor, not a tuned best case.
+- **No GPU embedding throughput.** Serving embeddings needs a second vLLM
+  process started with `--task embed`, and Radeon Cloud allows one active
+  instance per account, so it was not reachable from this configuration at all.
+  Section 4.1 explains the consequence.
 
-1. Problem: private code, no cloud (20s)
-2. Index a real repo live, show GPU utilization (40s)
-3. Multi-turn session: locate a bug, run tests, fix, re-run (2 min)
-4. Benchmark screen: optimization journey on Radeon (1 min)
-5. Architecture slide and close (30s)
+## 5. What the demo video shows
+
+`demo.mp4`, 3 m 42 s, recorded against the live Radeon endpoint. Nothing is
+staged: every command really runs and the output is whatever the machine
+returned.
+
+1. Title card and the premise (7s)
+2. `vulcan index` on this repository, then an agent question answered with
+   cited files, served by vLLM on the Radeon
+3. `vulcan bench` decode and prefill runs against the Radeon endpoint
+4. `vulcan bench-concurrency --levels 1,4,8`, the 6.96x result, captured live
+5. `vulcan bench-compare` head-to-head against the laptop baseline
+6. End card with the committed numbers (9s)

@@ -1,0 +1,28 @@
+# Hardware identity of the Radeon Cloud instance used for every Radeon
+# measurement in this submission (instance id u-8047-dc574cbf).
+#
+# Captured after the benchmark runs, on the same instance, with the commands
+# shown. rocm-smi cannot reach libdrm inside this container, so it reports the
+# PCI model id rather than a marketing name; 0x744b is Navi 31. The torch
+# properties below are what the driver actually reports.
+
+$ rocm-smi --showproductname
+GPU[0]          : Card Series:            N/A
+GPU[0]          : Card Model:             0x744b
+GPU[0]          : Card Vendor:            Advanced Micro Devices, Inc. [AMD/ATI]
+GPU[0]          : Card SKU:               D7070910
+GPU[0]          : Subsystem ID:           0x0e0c
+GPU[0]          : Device Rev:             0x00
+GPU[0]          : Node ID:                2
+
+$ rocm-smi --showmeminfo vram
+GPU[0]          : VRAM Total Memory (B):  51522830336      # 48.0 GiB
+GPU[0]          : VRAM Total Used Memory (B): 28028928
+
+$ python -c "import torch; p = torch.cuda.get_device_properties(0); ..."
+torch:                  2.10.0+rocm7.2.4.git3d3aa833
+hip:                    7.2.53211
+gcnArchName:            gfx1100                          # RDNA 3, Navi 31
+total_memory_GiB:       48.0
+multi_processor_count:  48
+is_available:           True

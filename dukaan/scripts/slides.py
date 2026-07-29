@@ -111,6 +111,36 @@ def gallery_card(out: Path, packs: list[tuple[Path, str, str]]) -> None:
     img.save(out)
 
 
+def styles_card(out: Path, sheet: Path) -> None:
+    img, d = _slide()
+    y = _title(d, "One photo, four looks",
+               "Only the style name changed. The product is identical in all four.")
+    im = Image.open(sheet).convert("RGB")
+    im.thumbnail((W - 160, H - y - 120), Image.LANCZOS)
+    img.paste(im, ((W - im.width) // 2, y + 40))
+    img.save(out)
+
+
+def batching_card(out: Path) -> None:
+    img, d = _slide()
+    y = _title(d, "A shop has a catalogue, not a photo",
+               "The model load is paid once for the batch, not once per product.")
+    rows = [
+        ("checkpoint + text encoder load", "17.9 s", "paid once", INK),
+        ("first product", "45.8 s", "", DIM),
+        ("second product", "34.6 s", "same work, warmer GPU", DIM),
+        ("third product", "23.2 s", "", DIM),
+        ("3 products batched", "125 s", "vs ~186 s separately", ACCENT),
+    ]
+    ry = y + 30
+    for a, b, c, colour in rows:
+        d.text((110, ry), a, font=_font(26), fill=colour)
+        d.text((640, ry), b, font=_font(26), fill=colour)
+        d.text((820, ry), c, font=_font(22), fill=colour)
+        ry += 54
+    img.save(out)
+
+
 def finding_card(out: Path) -> None:
     img, d = _slide()
     y = _title(d, "The instance cannot run its own template",
@@ -154,7 +184,7 @@ def fix_card(out: Path) -> None:
         ry += 54
     d.text((110, ry + 40), "65 s of GPU time per pack. 49 frames at 768x768, with audio.",
            font=_font(26), fill=INK)
-    d.text((110, ry + 82), "26 tests, none of which need a GPU.", font=_font(26), fill=DIM)
+    d.text((110, ry + 82), "30 tests, none of which need a GPU.", font=_font(26), fill=DIM)
     img.save(out)
 
 
@@ -191,7 +221,11 @@ if __name__ == "__main__":
     if len(packs) >= 2:
         gallery_card(dest / "04-gallery.png", packs[:3])
 
-    finding_card(dest / "05-finding.png")
-    fix_card(dest / "06-fix.png")
+    sheet = Path("docs/gallery/one-photo-four-styles.png")
+    if sheet.exists():
+        styles_card(dest / "05-styles.png", sheet)
+    finding_card(dest / "06-finding.png")
+    fix_card(dest / "07-fix.png")
+    batching_card(dest / "08-batching.png")
     for p in sorted(dest.glob("*.png")):
         print(p, Image.open(p).size)

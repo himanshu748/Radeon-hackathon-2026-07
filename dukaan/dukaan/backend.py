@@ -50,6 +50,9 @@ class Backend(Protocol):
 
     def render(self, plate: Image.Image, style: Style, cfg: Config) -> Clip: ...
 
+    def render_batch(self, items: list[tuple[str, Image.Image, Style]],
+                     cfg: Config) -> dict[str, Clip]: ...
+
 
 class MockBackend:
     """CPU stand-in. Deterministic, so tests can assert on it."""
@@ -71,6 +74,9 @@ class MockBackend:
             box = ((w - cw) // 2, (h - ch) // 2, (w + cw) // 2, (h + ch) // 2)
             out.append(plate.crop(box).resize((w, h), Image.LANCZOS))
         return Clip(frames=out, meta={"backend": self.name, "frames": cfg.frames})
+
+    def render_batch(self, items, cfg: Config) -> dict:
+        return {key: self.render(plate, style, cfg) for key, plate, style in items}
 
 
 def chroma_cutout(image: Image.Image, tolerance: int = 34, feather: float = 1.2,
@@ -250,6 +256,68 @@ class RadeonBackend:
         meta = json.loads(files["meta.json"]) if "meta.json" in files else {}
         meta["backend"] = self.name
         return Clip(frames=frames, audio=files.get("audio.wav"), meta=meta)
+
+    def render_batch(self, items: list[tuple[str, Image.Image, Style]], cfg: Config) -> dict[str, Clip]:
+        """Render several plates against a single pair of model loads.
+
+        Loading the checkpoint costs about 14 seconds and loading the text
+        encoder about 5, every time. Per photo that is most of a small run; a
+        shop with fifty items would pay it fifty times for nothing. Batching
+        pays it once, so throughput rises with the size of the catalogue.
+        """
+        if not items:
+            return {}
+        runner = f"/workspace/{self.dir}/radeon_ltx.py"
+        base = f"/workspace/{self.dir}"
+
+        self.inst.shell(f"rm -rf {base}/batch && mkdir -p {base}/batch")
+        encode_jobs, sample_jobs = [], []
+        for key, plate, style in items:
+            buf = io.BytesIO()
+            plate.convert("RGB").save(buf, format="PNG")
+            self.inst.put_bytes(buf.getvalue(), f"{self.dir}/batch/{key}.png")
+            encode_jobs.append({"positive": f"{style.motion_prompt} {style.prompt}",
+                                "conditioning": f"{base}/batch/{key}.pt"})
+            sample_jobs.append({"image": f"{base}/batch/{key}.png",
+                                "out": f"{base}/batch/{key}",
+                                "conditioning": f"{base}/batch/{key}.pt"})
+
+        self.inst.put_bytes(json.dumps(encode_jobs).encode(), f"{self.dir}/batch/encode.json")
+        self.inst.put_bytes(json.dumps(sample_jobs).encode(), f"{self.dir}/batch/sample.json")
+
+        self.inst.detach(
+            f"/opt/venv/bin/python3 {runner} encode --jobs {base}/batch/encode.json"
+            f" --negative {shlex.quote(NEGATIVE)}",
+            f"{base}/encode.log",
+        )
+        self.inst.wait_for(f"{base}/encode.log", f"encoded {len(encode_jobs)}/{len(encode_jobs)}",
+                           timeout=cfg.job_timeout_s)
+
+        self.inst.detach(
+            f"env PYTORCH_ALLOC_CONF=expandable_segments:True /opt/venv/bin/python3 {runner} sample"
+            f" --jobs {base}/batch/sample.json"
+            f" --width {cfg.width} --height {cfg.height} --frames {cfg.frames}"
+            f" --fps {cfg.fps} --seed {cfg.seed} --strength {cfg.strength}"
+            + (" --refine" if cfg.refine else ""),
+            f"{base}/sample.log",
+        )
+        log = self.inst.wait_for(f"{base}/sample.log", f"decoded {len(sample_jobs)}/{len(sample_jobs)}",
+                                 timeout=cfg.job_timeout_s)
+
+        out: dict[str, Clip] = {}
+        for key, _, _ in items:
+            files = self.inst.get_dir(f"{self.dir}/batch/{key}", f"{base}/batch/{key}")
+            frames = [Image.open(io.BytesIO(files[n])).convert("RGB")
+                      for n in sorted(n for n in files if n.endswith(".png"))]
+            if not frames:
+                raise RuntimeError(
+                    f"the GPU run returned no frames for {key}. Tail of the run:\n"
+                    + "\n".join(log.splitlines()[-15:])
+                )
+            meta = json.loads(files["meta.json"]) if "meta.json" in files else {}
+            meta["backend"] = self.name
+            out[key] = Clip(frames=frames, audio=files.get("audio.wav"), meta=meta)
+        return out
 
     def deploy(self, runner: Path) -> None:
         """Put the runner on the instance's persistent volume.

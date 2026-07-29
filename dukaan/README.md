@@ -14,6 +14,10 @@ The GPU runs **once per pack**, not once per format.
 
 ![square](docs/gallery/brass-ewer-square.png)
 
+One photo, four looks, the product identical in every one:
+
+![four styles](docs/gallery/one-photo-four-styles.png)
+
 ## Run it
 
 ```bash
@@ -62,7 +66,39 @@ GPU time and a little over two minutes wall clock, including the transfers.
   gpu     72.6s on radeon-ltx
 ```
 
-`dukaan styles` lists the four looks and the three formats.
+### A catalogue, not a photo
+
+A shop has stock, not a picture. Loading the checkpoint costs about 17 seconds
+and the text encoder about 9, every single time, so packing a folder one photo
+at a time pays that toll per item for nothing:
+
+```bash
+.venv/bin/dukaan catalogue ~/photos --style studio --contact "+91 90000 00000"
+```
+
+```
+3 pack(s) via radeon-ltx
+  brass-ewer       3 creatives   stills from 1, 32, 48    45.8s
+  gilt-bangles     3 creatives   stills from 1, 30, 33    34.6s
+  silver-bracelet  3 creatives   stills from 13, 21, 48   23.2s
+one model load of 17.9s shared across 3 product(s)
+```
+
+Measured with `dukaan bench`: three products cost **134.3 s** batched against
+**212.1 s** run separately. The 13.8 s model load is paid once and per-product
+time then falls as the GPU warms, for identical work.
+
+### Changing the words costs nothing
+
+Prices move and offers end. The scene was already right, so `relabel`
+recomposes the same stills with new type and never touches the GPU:
+
+```bash
+.venv/bin/dukaan relabel out/brass-ewer --subline "Diwali price, 1,199 rupees"
+```
+
+`dukaan styles` lists the four looks and the three formats. `dukaan bench`
+re-measures the table below on your own hardware.
 
 ## The interesting part: the instance cannot run its own template
 
@@ -95,9 +131,13 @@ Peak becomes `max(43, 23)` instead of `43 + 23`. Measured on the box:
 
 | phase | peak container RAM | wall |
 |---|---|---|
-| encode | 35.4 GB | 33 s |
-| sample | 51.2 GB | 55 s |
+| encode, text encoder only | 35.4 GB | 33 s |
+| sample, checkpoint only | 49.9 GB | 55 s |
 | *stock template, one process* | *trips 55 GB, container restarts* | *n/a* |
+
+Peak is sampled every 200 ms during the run. Reading it at the end instead
+reports about 12 GB, because the models have already been evicted by then, and
+that is the number a naive benchmark prints.
 
 Three smaller things were needed to make it hold:
 

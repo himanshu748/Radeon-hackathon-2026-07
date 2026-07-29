@@ -27,6 +27,10 @@ type, never drawn by a model.
 **The GPU runs once per pack, not once per format.** Three formats are three
 different moments of the same generated clip.
 
+One photo, four looks, the product identical in every one:
+
+![four styles](gallery/one-photo-four-styles.png)
+
 ---
 
 ## The finding: the instance cannot run its own template
@@ -62,14 +66,30 @@ sampler's output in place).
 
 ## Measured
 
-| product | GPU | wall | output |
+| setting | output | GPU | peak RAM |
 |---|---|---|---|
-| brass ewer | 65.3 s | 2 m 20 s | 3 stills, 49 frames, 1.96 s stereo |
-| silver bangle | 72.6 s | 2 m 19 s | 3 stills, 49 frames, 1.96 s stereo |
-| gilt bangles | 62.0 s | batched | 3 stills, 49 frames, 1.96 s stereo |
+| 768x768, 49 frames | 768x768 | 70.7 s | 49.9 GB |
+| 768x768, refined | **1536x1536** | 176.1 s | 49.9 GB |
+| 3 products, one batch | 768x768 | **134.3 s** | 49.9 GB |
+
+Every run holds under the 55 GB cap. `dukaan bench` reproduces the table.
 
 Transport was a bottleneck too: 49 frames as 49 base64 requests took 3 m 34 s
 and reset the tunnel twice. One tar brought it to 2 m 19 s.
+
+## Batching is the lever that removes work rather than trading it
+
+Loading the checkpoint costs 17 s and the text encoder 9 s, whatever you then
+generate. A shop packing fifty items one at a time pays that fifty times.
+
+| | |
+|---|---|
+| 3 products, one batch | **134.3 s** |
+| 3 products, separately | 212.1 s |
+| per-product, across the batch | 36.3 s, then 28.0 s, then 26.6 s |
+
+The 13.8 s load is paid once, and per-product time then falls as the GPU warms,
+for identical work. A 37% saving on three; it grows with the catalogue.
 
 ---
 

@@ -52,12 +52,14 @@ ALT=$(ls -d out/*/ | grep -v "$(basename "$SRC")" | head -1)
 ALT_STYLE=$(basename "$(ls "$ALT"/*_manifest.json | head -1)" _manifest.json)
 clip "$ALT/${ALT_STYLE}_clip_frames/%03d.png" "$ALT/${ALT_STYLE}_clip.wav" 4 "$WORK/clip2.mp4"
 
-still "$WORK/slides/01-title.png"     8 "$WORK/01.mp4"
-still "$WORK/slides/02-pipeline.png" 12 "$WORK/02.mp4"
-still "$WORK/slides/03-formats.png"  15 "$WORK/04.mp4"
-still "$WORK/slides/04-gallery.png"  14 "$WORK/05.mp4"
-still "$WORK/slides/05-finding.png"  16 "$WORK/06.mp4"
-still "$WORK/slides/06-fix.png"      17 "$WORK/07.mp4"
+still "$WORK/slides/01-title.png"      8 "$WORK/01.mp4"
+still "$WORK/slides/02-pipeline.png"  12 "$WORK/02.mp4"
+still "$WORK/slides/03-formats.png"   15 "$WORK/04.mp4"
+still "$WORK/slides/04-gallery.png"   14 "$WORK/05.mp4"
+still "$WORK/slides/05-styles.png"    14 "$WORK/06.mp4"
+still "$WORK/slides/06-finding.png"   16 "$WORK/07.mp4"
+still "$WORK/slides/07-fix.png"       17 "$WORK/08.mp4"
+still "$WORK/slides/08-batching.png"  14 "$WORK/09.mp4"
 
 echo "==> terminal segment"
 # Normalise the vhs capture to the same size, frame rate and a silent track so
@@ -65,7 +67,7 @@ echo "==> terminal segment"
 ffmpeg -y -loglevel error -i demo-terminal.mp4 "${SILENCE[@]}" \
   -vf "$VSCALE" -c:v libx264 -preset medium -crf 20 -c:a aac -shortest "$WORK/03.mp4"
 
-for f in 01 02 03 04 clip 05 clip2 06 07; do printf "file '%s/%s.mp4'\n" "$WORK" "$f"; done > "$WORK/list.txt"
+for f in 01 02 03 04 clip 05 clip2 06 07 08 09; do printf "file '%s/%s.mp4'\n" "$WORK" "$f"; done > "$WORK/list.txt"
 
 echo "==> concat"
 ffmpeg -y -loglevel error -f concat -safe 0 -i "$WORK/list.txt" -c copy demo.mp4

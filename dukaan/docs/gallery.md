@@ -11,6 +11,16 @@ and the type is composited afterwards.
 
 ---
 
+## One photo, four looks
+
+The same photograph under every style Dukaan ships. Only the style name changed
+between these four runs; the ewer is identical in all of them, which is the
+point. A seller cannot post a picture of a thing they will not ship.
+
+![four styles](gallery/one-photo-four-styles.png)
+
+---
+
 ## Handmade brass ewer, festive
 
 Plate the model was given, then the three creatives.

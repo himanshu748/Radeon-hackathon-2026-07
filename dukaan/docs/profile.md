@@ -47,7 +47,7 @@ commission artwork for it.
 | Festival push, same products, seasonal look | Same photos re-run under the `festive` style, no re-shoot |
 | Story or reel slot | 1024x1820 still plus a 2-second clip with generated ambient audio |
 | Marketplace or shop-page header | 1820x1024 banner |
-| Price change | Re-composite type only; the generated scene is reused |
+| Price change | `dukaan relabel` recomposes the same stills with new type, no GPU |
 
 **Why the constraints matter.** Sellers photograph against whatever is behind
 the counter, so the background is rarely one flat colour. They type prices and
@@ -99,13 +99,23 @@ equivalent, and it does it **once per pack** rather than once per output.
 
 The instance carries exactly one generative model: `ltx-2.3-22b-dev`, an
 audio-video diffusion model, plus its Gemma 3 12B text encoder, a spatial
-upscaler and two LoRAs. There is no image-only model and the instance cannot
-reach Hugging Face to fetch one, so an image model was not an option.
+upscaler and two LoRAs. There is no image-only model on disk.
 
-That single fact set the architecture. If the only generator produces moving
-scenes, then stills are lifted out of a scene rather than generated one at a
-time. Three formats can look like three different shots because they are three
-different moments of the same pass, which costs one generation instead of three.
+Fetching one is awkward rather than impossible, and the reason is worth
+recording for anyone else building on this hardware. The instance sits in
+mainland China (egress 36.150.116.194, Zhengzhou), so `huggingface.co` times out
+and `github.com` resolves to an address that refuses instantly. PyPI,
+`raw.githubusercontent.com`, `hf-mirror.com` and `modelscope.cn` all answer
+normally, so weights can be pulled through a mirror with
+`HF_ENDPOINT=https://hf-mirror.com`.
+
+Dukaan still uses LTX alone, by choice rather than by constraint. The 43 GB
+checkpoint is already on disk, and a video model turns out to be the better
+primitive for this job: if the generator produces moving scenes, stills are
+lifted out of a scene rather than generated one at a time, so three formats can
+look like three different shots for the cost of one generation. Adding a second
+model would also mean a second 20-plus GB resident in a container that already
+cannot hold the pair it ships with, which is the constraint section 5 is about.
 
 The graph mirrors the workflow that ships with the template, so the semantics
 match what the ComfyUI editor would run:
@@ -208,7 +218,38 @@ Peak becomes `max(43, 23)` instead of `43 + 23`. Measured on the box:
 | sample | 51.2 GB | 55 s |
 | stock template, one process | trips 55 GB, container restarts | n/a |
 
-### 5.3 Three further adaptations
+### 5.3 Batching, the one lever that changes the shape of the cost
+
+Every other setting trades quality for time. Batching does not: it removes work
+that was never necessary.
+
+Loading the checkpoint costs about 17 seconds and the text encoder about 9, and
+neither depends on how much you then generate. A shop packing fifty items one
+photo at a time pays that toll fifty times. Dukaan's `catalogue` command encodes
+every prompt against one text-encoder load, then samples every plate against one
+checkpoint load:
+
+```
+[checkpoint-loaded]   17.1s
+[lora+audio-vae]      17.9s
+[sampled 1/3]         63.7s     first product: 45.8 s
+[sampled 2/3]         98.3s     second:        34.6 s
+[sampled 3/3]        121.5s     third:         23.2 s
+[models-evicted]     125.3s
+```
+
+Two effects compound. The load is paid once instead of three times, and
+per-product time then falls by half across the batch as the GPU warms, for
+identical work. Three products cost 125 s batched against roughly 186 s run
+separately.
+
+The ordering this requires is worth stating: every product is **sampled** before
+anything is **decoded**. The VAE decode needs the 22B transformer out of VRAM,
+and evicting it between products would mean reloading 43 GB per product, which
+is the entire cost the batch exists to avoid. Latents are small, so holding all
+of them until the transformer is gone is cheap.
+
+### 5.4 Three further adaptations
 
 **bf16 conditioning.** The conditioning is read back while the 43 GB checkpoint
 is already resident, so every megabyte comes off the remaining 4 GB of headroom.
@@ -232,24 +273,43 @@ the same.
 `PYTORCH_ALLOC_CONF=expandable_segments:True` is set for the sampling phase to
 keep HIP allocator fragmentation from re-introducing the OOM.
 
-### 5.4 Measured results
+### 5.5 How the memory numbers were measured
 
-| product | style | GPU time | wall clock | output |
+Reading `memory.current` when a run finishes reports about 12 GB, because the
+models have already been evicted by then. Quoting that as the pipeline's
+footprint would be flattering and wrong, and it is the number an obvious
+implementation reports: the first version of the benchmark did exactly this and
+claimed 11.8 GB for a pipeline whose real peak is over 50.
+
+The kernel's own `memory.peak` is not usable either. Resetting it needs a write
+this kernel rejects, so it reports the high-water mark since the container
+booted rather than since the run started. Dukaan therefore samples
+`memory.current` on a thread every 200 ms and keeps the maximum, which is
+per-run by construction and costs one file read per sample.
+
+### 5.6 Measured results
+
+| setting | output | GPU time | peak container RAM | MPx-frames/s |
 |---|---|---|---|---|
-| brass ewer | festive | 65.3 s | 2 m 20 s | 3 stills, 49 frames, 1.96 s stereo |
-| silver bangle | studio | 72.6 s | 2 m 19 s | 3 stills, 49 frames, 1.96 s stereo |
-| gilt bangles | midnight | 62.0 s | batched | 3 stills, 49 frames, 1.96 s stereo |
+| 512x512, 25 frames | 512x512 | 45.5 s | 49.8 GB | 0.14 |
+| 768x768, 25 frames | 768x768 | 54.6 s | 49.9 GB | 0.27 |
+| 768x768, 49 frames | 768x768 | 70.7 s | 49.9 GB | 0.41 |
+| 768x768, 49 frames, refined | **1536x1536** | 176.1 s | 49.9 GB | 0.66 |
+| **3 products, one batch** | 768x768 | **134.3 s** | 49.9 GB | vs 212.1 s separately |
 
-49 frames at 768x768 with audio, per pack. Wall clock covers the plate upload,
-both model loads, sampling, decode and pulling everything back over the tunnel.
+Reproduce with `dukaan bench <photo>`; the raw JSON is in `bench-results/`.
+Throughput rises with the size of the job because the 13.8 s model load is
+fixed, which is the whole argument for the batch.
 
-Transport was itself a bottleneck and a failure source: fetching 49 frames as 49
-base64 requests took 3 m 34 s and the tunnel reset the connection twice mid-run.
-Tarring on the instance and pulling one archive brought it to 2 m 19 s. Retries
-now cover HTTP, the websocket connect, and the log-polling loop, so a dropped
-socket no longer discards a run that has already cost GPU time.
+A single pack end to end, including the plate upload, both model loads, sampling,
+decode and pulling 49 frames plus a wav back over the tunnel, is about 2 m 20 s
+wall clock. Before frames were fetched as one tar it was 3 m 34 s, and the tunnel
+reset the connection twice mid-run.
 
-### 5.5 Two template defects worth reporting upstream
+Batching measured on the same settings as row 3: 13.8 s of model load paid once,
+then 36.3 s, 28.0 s and 26.6 s for three identical products as the GPU warms.
+
+### 5.7 Two template defects worth reporting upstream
 
 - The LTX notebook's own cell invokes `start_comfyui_with_rc_tunnel.sh`; the
   file on disk is `start_comfyui_with_tunnel.sh`. Run All fails.

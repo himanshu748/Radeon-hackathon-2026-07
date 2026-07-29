@@ -159,8 +159,17 @@ class Instance:
             while time.time() < deadline:
                 ws.settimeout(max(1.0, deadline - time.time()))
                 try:
-                    m = json.loads(ws.recv())
+                    frame = ws.recv()
                 except websocket.WebSocketTimeoutException:
+                    continue
+                # Jupyter sends binary frames for messages carrying buffers, and
+                # an empty frame on a half-closed socket. Neither is ours, and
+                # neither should end a run that is still going.
+                if not frame:
+                    continue
+                try:
+                    m = json.loads(frame)
+                except (ValueError, TypeError):
                     continue
                 if m.get("parent_header", {}).get("msg_id") != msg_id:
                     continue
@@ -223,7 +232,8 @@ class Instance:
             try:
                 text = self.shell(f"cat {log} 2>/dev/null || true")
                 misses = 0
-            except (InstanceError, requests.RequestException, websocket.WebSocketException, OSError):
+            except (InstanceError, requests.RequestException, websocket.WebSocketException,
+                    OSError, ValueError):
                 misses += 1
                 if misses >= tolerate:
                     raise InstanceError(

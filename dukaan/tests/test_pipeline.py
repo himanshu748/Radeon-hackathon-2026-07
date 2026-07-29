@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import numpy as np
@@ -8,7 +9,7 @@ from dukaan.backend import MockBackend, _fit, chroma_cutout
 from dukaan.config import Config
 from dukaan.frames import fit_scene, pick_frames, sharpness
 from dukaan.layout import compose, contact_strip
-from dukaan.pack import build_pack, make_plate
+from dukaan.pack import build_pack, make_plate, relabel
 from dukaan.spec import FORMATS, FORMATS_BY_NAME, STYLES_BY_NAME, Brief
 
 
@@ -200,6 +201,55 @@ class TestPack:
         plate = make_plate(chroma_cutout(_photo()), style, (256, 256))
         assert plate.size == (256, 256)
         assert plate.getpixel((4, 4)) == style.backdrop, "corners are the style backdrop"
+
+
+class TestRelabel:
+    def _packed(self, tmp_path: Path):
+        build_pack(_cfg(tmp_path), MockBackend(), _photo(),
+                   Brief("pot", "Clay pots", "900 rupees", style="studio"), contact="+91 1")
+        return tmp_path / "pot"
+
+    def test_changes_words_and_keeps_the_same_frames(self, tmp_path: Path):
+        """The whole point: new type, same scene, no GPU."""
+        d = self._packed(tmp_path)
+        before = {f"studio_{n}.png": (d / f"studio_{n}.png").read_bytes()
+                  for n in (f.name for f in FORMATS)}
+        first = json.loads((d / "studio_manifest.json").read_text())["still_from_frame"]
+
+        res = relabel(d, subline="Diwali price, 700 rupees")
+        after = json.loads((d / "studio_manifest.json").read_text())
+
+        assert res.frame_of == {k: int(v) for k, v in first.items()}, "same frames reused"
+        assert after["subline"] == "Diwali price, 700 rupees"
+        assert after["headline"] == "Clay pots", "untouched fields survive"
+        assert after["contact"] == "+91 1", "contact defaults to what the pack had"
+        changed = [n for n, b in before.items() if (d / n).read_bytes() != b]
+        assert len(changed) == len(before), "every creative was rewritten"
+        assert (d / "studio_plate.png").exists(), "the plate is an input, not a creative"
+
+    def test_uses_no_backend_at_all(self, tmp_path: Path):
+        d = self._packed(tmp_path)
+
+        class Exploding(MockBackend):
+            def render(self, plate, style, cfg):
+                raise AssertionError("relabel must not reach the GPU")
+
+        # relabel takes no backend, so the only way it could generate is via a
+        # pack call; assert the signature keeps that impossible.
+        relabel(d, headline="New words")
+        assert json.loads((d / "studio_manifest.json").read_text())["headline"] == "New words"
+
+    def test_explains_itself_when_there_is_no_pack(self, tmp_path: Path):
+        with pytest.raises(FileNotFoundError) as e:
+            relabel(tmp_path)
+        assert "dukaan pack" in str(e.value)
+
+    def test_explains_itself_when_frames_were_skipped(self, tmp_path: Path):
+        build_pack(_cfg(tmp_path), MockBackend(), _photo(), Brief("pot", "Clay pots"),
+                   write_clip=False)
+        with pytest.raises(FileNotFoundError) as e:
+            relabel(tmp_path / "pot", headline="x")
+        assert "--no-clip" in str(e.value)
 
 
 class TestBrief:

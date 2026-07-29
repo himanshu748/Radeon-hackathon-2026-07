@@ -20,7 +20,8 @@ fi
 
 : "${VULCAN_API_KEY:?Set VULCAN_API_KEY in .env (see .env.example) to the Radeon instance key}"
 
-export VULCAN_BASE_URL="${VULCAN_BASE_URL:-https://radeon-global.anruicloud.com/spaces/u-8047-dc574cbf/8000/v1}"
+# No default: the instance id is per-launch and does not belong in the repo.
+: "${VULCAN_BASE_URL:?set VULCAN_BASE_URL in .env to the current instance endpoint}"
 export VULCAN_MODEL="${VULCAN_MODEL:-Qwen/Qwen3-8B}"
 export VULCAN_ENABLE_THINKING="${VULCAN_ENABLE_THINKING:-false}"
 

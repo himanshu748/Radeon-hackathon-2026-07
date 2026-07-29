@@ -1,5 +1,5 @@
 # Hardware identity of the Radeon Cloud instance used for every Radeon
-# measurement in this submission (instance id u-8047-dc574cbf).
+# measurement in this submission (instance id redacted).
 #
 # Captured after the benchmark runs, on the same instance, with the commands
 # shown. rocm-smi cannot reach libdrm inside this container, so it reports the

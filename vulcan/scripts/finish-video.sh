@@ -42,15 +42,18 @@ EOF
 cat > /tmp/vulcan-end.txt <<'EOF'
 Measured, not claimed
 
-Concurrency 1 to 8 on the Radeon, just measured on screen:
-23.2 to 161.5 chunks/s aggregate, a 6.96x gain at 8x load,
-per-request rate holding 23.2 to 20.2
+Four tools chosen by the agent, on screen, unedited:
+search_code, run_cmd, grep, remember
+Memory written to disk and recalled in a fresh session
+
+Continuous batching on the Radeon, 1 to 8 concurrent:
+8.12x on stock settings, 4.07x with the batch capped at 4
+The capped run scales to exactly its own cap
 
 Same harness on an M4 Air with Ollama:
 one extra request LOWERS throughput, TTFT 4.36s to 42.21s
 
-Two independent clients, both committed: 6.96x and 7.63x
-Raw JSON in bench-results/
+Raw JSON for every number in bench-results/
 
 github.com/himanshu748/vulcan
 EOF

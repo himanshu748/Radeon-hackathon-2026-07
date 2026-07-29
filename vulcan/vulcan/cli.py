@@ -17,6 +17,20 @@ app = typer.Typer(no_args_is_help=True, add_completion=False)
 console = Console()
 
 
+
+def _masked(url: str) -> str:
+    """Show enough of the endpoint to identify it, not enough to reuse it.
+
+    The instance id is the whole path to someone else's GPU budget. It ends up
+    in screenshots, screen recordings and CI logs, so the banner prints the host
+    and elides the rest.
+    """
+    head, _, tail = url.rstrip("/").rpartition("/spaces/")
+    if not head:
+        return url
+    return f"{head}/spaces/<instance>/" + tail.split("/", 1)[-1]
+
+
 @app.command()
 def index(path: Path = typer.Argument(..., exists=True), name: str = "default") -> None:
     """Index a codebase for semantic search."""
@@ -46,7 +60,7 @@ def chat(root: Path = Path("."), name: str = "default") -> None:
     """Interactive multi-turn session."""
     cfg = load()
     agent = Agent(cfg, root.resolve(), name)
-    console.print(f"[cyan]Vulcan[/cyan] on {cfg.base_url} · model {cfg.model} · ctrl-d to exit")
+    console.print(f"[cyan]Vulcan[/cyan] on {_masked(cfg.base_url)} · model {cfg.model} · ctrl-d to exit")
     while True:
         try:
             question = console.input("[bold]you>[/bold] ")
@@ -62,7 +76,7 @@ def chat(root: Path = Path("."), name: str = "default") -> None:
 def bench(label: str = "local", repeats: int = 3) -> None:
     """Measure TTFT and generation speed on the current backend."""
     cfg = load()
-    console.print(f"Benchmarking {cfg.model} at {cfg.base_url} ...")
+    console.print(f"Benchmarking {cfg.model} at {_masked(cfg.base_url)} ...")
     results = bench_mod.run(cfg, label, repeats)
     for name, run in results["runs"].items():
         console.print(f"  {name:7s} ttft={run['ttft_s_median']}s  speed={run['chunks_per_s_median']} chunks/s")

@@ -334,14 +334,51 @@ figure at one concurrent is the same artefact. Aggregate throughput is the
 robust signal here and it is what the conclusion rests on. Both files carry
 `repeats: 1` per level.
 
+#### Quantization: it costs throughput on this card
+
+AWQ 4-bit was the obvious next thing to try, so it was tried.
+`Qwen/Qwen3-8B-AWQ` served on the same instance, same flags, same harness.
+
+First, it works at all: AWQ loads and serves on **gfx1100 under ROCm vLLM
+0.16**, which is not a given, since much of the quantized-kernel tooling assumes
+CUDA. Cold start was about six minutes including the weight download.
+
+`vulcan bench-compare bench-results/gmu092-stock-conc.json bench-results/awq-conc.json`
+
+| concurrent | fp16 | AWQ 4-bit | AWQ / fp16 |
+|---|---|---|---|
+| 1 | 20.0 chunks/s | 14.4 | 0.72x |
+| 4 | 78.1 | 53.3 | 0.68x |
+| 8 | 162.5 | 111.1 | 0.68x |
+
+Single-stream decode agrees: 23.9 to 24.3 chunks/s at fp16 against 15.5 to 15.7
+at AWQ, a consistent **0.65x**.
+
+**Quantization is a loss here, and the reason is the card.** AWQ buys memory by
+paying compute: weights are unpacked on every forward pass. That trade is worth
+it when the model does not otherwise fit, or when memory bandwidth is the
+binding constraint. On a 48 GB card serving an 8B model, neither is true. The
+weights already fit with room for a large KV cache, so the dequantization cost
+is paid for a benefit that is not needed, and throughput drops by a third.
+
+Batching still behaves: AWQ scales 7.7x from 1 to 8 concurrent against fp16's
+8.12x, so the continuous-batching result in the previous section is a property
+of the serving stack rather than of the weight format.
+
+The honest conclusion for this agent is to stay at fp16. Quantization becomes
+the right call on a smaller card, or for a model in the 30B-plus range where
+fp16 stops fitting in 48 GB, and this measurement is what says which regime you
+are in.
+
 ### 4.5 What was not measured, and why
 
 Stating the boundary rather than implying the map is complete:
 
-- **No quantization sweep.** fp16 against int8 or AWQ would be the obvious next
-  result, and it needs a second model download and a second serving config, so
-  it is two more GPU-hours against a five-credit budget already spent on the
-  concurrency, thinking-mode and batch-cap results.
+- **VRAM saving was not measured directly.** AWQ's benefit is a smaller
+  resident model, and the instance exposes only an inference endpoint through
+  the proxy, with no shell (ssh refuses on port 31200) and no rocm-smi from the
+  client. The throughput cost is measured; the memory saving is inferred from
+  the format and is not claimed as a number here.
 - **No `--gpu-memory-utilization` or chunked-prefill sweep.** The batch-cap
   experiment above answered the question those were going to be asked for, which
   was whether the stock serving config is leaving throughput unclaimed.

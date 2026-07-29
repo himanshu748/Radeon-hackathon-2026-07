@@ -106,6 +106,27 @@ its JSON was not persisted, so it is not counted here.
 The 6.96x run is the one visible on screen in the demo video, produced by the
 shipped CLI rather than by a benchmarking harness written for the occasion.
 
+
+---
+
+## Quantization: measured, and rejected
+
+AWQ 4-bit on the same instance, same flags, same harness. It loads and serves on
+**gfx1100 under ROCm vLLM**, which is not a given.
+
+| concurrent | fp16 | AWQ 4-bit |
+|---|---|---|
+| 1 | 20.0 chunks/s | 14.4 |
+| 8 | **162.5** | **111.1** |
+
+**0.68x.** Decode agrees at 0.65x.
+
+AWQ buys memory by paying compute, and on a 48 GB card serving an 8B model there
+is no memory problem to buy out of. So the dequantization cost is paid for a
+benefit that is not needed. It is the right call on a smaller card, or past
+about 30B where fp16 stops fitting. This measurement is what tells you which
+regime you are in.
+
 ## 5b. Two more measured wins
 
 **Thinking mode off.** Qwen3 reasons by default, which is the wrong trade for

@@ -52,6 +52,23 @@ ALT=$(ls -d out/*/ | grep -v "$(basename "$SRC")" | head -1)
 ALT_STYLE=$(basename "$(ls "$ALT"/*_manifest.json | head -1)" _manifest.json)
 clip "$ALT/${ALT_STYLE}_clip_frames/%03d.png" "$ALT/${ALT_STYLE}_clip.wav" 4 "$WORK/clip2.mp4"
 
+# The browser-UI half, captured by scripts/capture-ui.py against the live
+# Radeon endpoint. VHS records terminals only, so the UI states come in as
+# stills of real pages showing real output.
+UISHOTS="${UISHOTS:-/tmp/uishots}"
+if ls "$UISHOTS"/*.png >/dev/null 2>&1; then
+  echo "==> browser UI segment"
+  i=0
+  for f in "$UISHOTS"/*.png; do
+    i=$((i+1))
+    case "$(basename "$f")" in
+      *generating*|*moment*) secs=5 ;;
+      *) secs=6 ;;
+    esac
+    still "$f" "$secs" "$WORK/ui$(printf '%02d' $i).mp4"
+  done
+fi
+
 still "$WORK/slides/01-title.png"      8 "$WORK/01.mp4"
 still "$WORK/slides/02-pipeline.png"  12 "$WORK/02.mp4"
 still "$WORK/slides/03-formats.png"   15 "$WORK/04.mp4"
@@ -67,7 +84,13 @@ echo "==> terminal segment"
 ffmpeg -y -loglevel error -i demo-terminal.mp4 "${SILENCE[@]}" \
   -vf "$VSCALE" -c:v libx264 -preset medium -crf 20 -c:a aac -shortest "$WORK/03.mp4"
 
-for f in 01 02 03 04 clip 05 clip2 06 07 08 09; do printf "file '%s/%s.mp4'\n" "$WORK" "$f"; done > "$WORK/list.txt"
+{
+  printf "file '%s/01.mp4'\n" "$WORK"
+  for u in "$WORK"/ui*.mp4; do [ -e "$u" ] && printf "file '%s'\n" "$u"; done
+  for f in 02 03 04 clip 05 clip2 06 07 08 09; do
+    [ -e "$WORK/$f.mp4" ] && printf "file '%s/%s.mp4'\n" "$WORK" "$f"
+  done
+} > "$WORK/list.txt"
 
 echo "==> concat"
 ffmpeg -y -loglevel error -f concat -safe 0 -i "$WORK/list.txt" -c copy demo.mp4

@@ -15,6 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+web = ["gradio>=4.44"]
 
 [project.scripts]
 dukaan = "dukaan.cli:app"

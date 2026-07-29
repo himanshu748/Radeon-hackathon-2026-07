@@ -344,5 +344,33 @@ def catalogue(
                       f"{len(results)} product(s)")
 
 
+@app.command()
+def serve(
+    port: int = typer.Option(7860, "--port", help="Port to serve the UI on"),
+    share: bool = typer.Option(False, "--share", help="Public gradio.live link"),
+) -> None:
+    """Open the browser UI: pick a photo, type the words, press the button.
+
+    Same pipeline as `dukaan pack`, so the two surfaces cannot drift apart.
+    """
+    try:
+        from .web import build_ui
+    except ImportError:
+        raise typer.BadParameter(
+            "the UI needs gradio, which is an optional extra so the CLI stays "
+            "dependency-light. Install it with: pip install -e '.[web]'"
+        )
+    cfg = load()
+    if cfg.offline:
+        console.print("[yellow]No DUKAAN_INSTANCE set.[/yellow] The UI will use the CPU preview backend.")
+    else:
+        console.print(f"Generating on [green]{_masked(cfg.instance)}[/green]")
+    # Gradio will not serve a file outside its own cache, the cwd or the
+    # system temp dir, and DUKAAN_OUT is frequently none of those.
+    cfg.out_dir.mkdir(parents=True, exist_ok=True)
+    build_ui(cfg).launch(server_port=port, share=share, inbrowser=False,
+                         allowed_paths=[str(cfg.out_dir.resolve())])
+
+
 if __name__ == "__main__":
     app()

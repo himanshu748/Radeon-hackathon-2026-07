@@ -1,7 +1,9 @@
 # Gallery
 
 Every image below came out of one `dukaan pack` run against a Radeon PRO
-(gfx1100, 48 GB) through ROCm. Each row is a single GPU pass: one clip, and
+(gfx1100, 48 GB) through ROCm, generated at **1536x1536** with the refine
+pass on, so the stills are downscaled into their formats rather than
+stretched up. Each row is a single GPU pass: one clip, and
 three stills lifted from three different moments of it.
 
 The input photographs are CC0 museum object shots, credited in
@@ -54,15 +56,15 @@ redesigned the product.
 
 ---
 
-## Gilt bangles, midnight
+## Blue-and-white porcelain vase, midnight
 
-<img src="gallery/gilt-bangles-plate.png" width="260">
+<img src="gallery/porcelain-vase-plate.png" width="260">
 
 | square, frame 1 | story, frame 29 | banner, frame 33 |
 |---|---|---|
-| <img src="gallery/gilt-bangles-square.png" width="240"> | <img src="gallery/gilt-bangles-story.png" width="135"> | <img src="gallery/gilt-bangles-banner.png" width="300"> |
+| <img src="gallery/porcelain-vase-square.png" width="240"> | <img src="gallery/porcelain-vase-story.png" width="135"> | <img src="gallery/porcelain-vase-banner.png" width="300"> |
 
-![clip](gallery/gilt-bangles-clip.gif)
+![clip](gallery/porcelain-vase-clip.gif)
 
 62.0 s of GPU time. The square landed on frame 1 here: the model settles almost
 immediately on a dark ground, so the sharpest frame in the first window is an

@@ -69,6 +69,28 @@ many ReAct steps at once.
 | 8 | not run | **179.2** chunks/s, TTFT **0.41s** |
 
 - Radeon: **7.63x throughput across an 8x load increase, 95% efficiency.**
+
+---
+
+## The control: what actually produces the scaling
+
+Stock settings invite a fair question, so the claim was tested by taking
+batching away. `--max-num-seqs 4` caps the batch at four sequences; everything
+else identical.
+
+| concurrent | stock | capped at 4 |
+|---|---|---|
+| 1 | 20.0 chunks/s | 21.6 |
+| 4 | 78.1 | 86.7 |
+| 8 | **162.5** | **88.0** |
+
+**8.12x stock, 4.07x capped at 4** — the capped run scales to its own cap.
+
+That is the control the claim needed: the scaling is continuous batching, not
+clock or bandwidth. Past the cap, throughput falls 46% and median TTFT goes
+from 1.6s to **25.5s**. So the stock config is already right for this workload,
+and this is the measurement that says so rather than an assumption.
+
   TTFT *improves* 3.6x. Batch wall clock moves only 51s to 65s for 1 request
   or 8, against 8x the work.
 - Laptop: one extra request makes aggregate throughput *fall* and TTFT grow

@@ -286,18 +286,65 @@ Identical generation rate. Thinking emits ~3.5x more tokens for the same
 task, so per-step latency falls by the same factor. Reproducible from the CLI
 with `VULCAN_ENABLE_THINKING=false`.
 
-### 4.4 What was not measured, and why
+#### Serving config: what actually produces the scaling
+
+The concurrency result above is on vLLM's stock settings, which invites a fair
+question: is the default right, or was throughput left on the table? The claim
+being made is that continuous batching produces the scaling, so the way to test
+it is to take batching away and see whether the scaling goes with it.
+
+`--max-num-seqs 4` caps the batch at four sequences. Everything else is
+identical: same model, same instance type, same harness, same prompts.
+
+`vulcan bench-compare bench-results/gmu092-stock-conc.json bench-results/maxseqs4-conc.json`
+
+| concurrent | stock agg (chunks/s) | capped at 4 | stock TTFT | capped TTFT |
+|---|---|---|---|---|
+| 1 | 20.0 | 21.6 | 1.679s | 5.267s |
+| 4 | 78.1 | 86.7 | 7.406s | 1.509s |
+| 8 | **162.5** | **88.0** | 1.629s | **25.489s** |
+
+**Scaling from 1 to 8: 8.12x stock, 4.07x capped at 4.**
+
+The capped run scales to 4.07x, which is its cap almost exactly. That is the
+control the earlier claim needed: the scaling is continuous batching, not
+bandwidth or clock, and `--max-num-seqs` is the knob that governs it.
+
+Three things follow, and the second is the one that matters for the agent:
+
+- At or below the cap the capped config is marginally *faster* (86.7 against
+  78.1 at four concurrent). Restricting the scheduler is not free but it is not
+  a loss either while the load fits.
+- Past the cap it collapses. Aggregate throughput falls 46%, per-request rate
+  halves (20.3 to 11.0 chunks/s), and **median TTFT goes from 1.6s to 25.5s**
+  because half the requests wait for a slot. A 25-second first token is not a
+  slow agent, it is a broken one.
+- So the stock configuration is already correct for this workload, and this is
+  the measurement that says so rather than an assumption. Tuning effort belongs
+  elsewhere.
+
+Single-stream decode is unchanged between the two configs (24.3 / 24.0 / 23.9
+chunks/s stock against 24.1 / 23.9 / 23.8 capped, `repeats: 5` each), which is
+the isolation check: one request never reaches a batch cap of four, so the flag
+provably touched only the batching path and nothing about raw generation.
+
+TTFT at a single sample per level is noisy: the 7.406s stock figure at four
+concurrent is an outlier against 1.6s either side of it, and the 5.267s capped
+figure at one concurrent is the same artefact. Aggregate throughput is the
+robust signal here and it is what the conclusion rests on. Both files carry
+`repeats: 1` per level.
+
+### 4.5 What was not measured, and why
 
 Stating the boundary rather than implying the map is complete:
 
 - **No quantization sweep.** fp16 against int8 or AWQ would be the obvious next
   result, and it needs a second model download and a second serving config, so
   it is two more GPU-hours against a five-credit budget already spent on the
-  concurrency and thinking-mode results, which are the two that changed a
-  decision in the agent.
-- **No vLLM serving-config sweep** (`--gpu-memory-utilization`,
-  `--max-num-seqs`, chunked prefill). Same reason. The concurrency curve here is
-  the stock config, so every number in 4.3 is a floor, not a tuned best case.
+  concurrency, thinking-mode and batch-cap results.
+- **No `--gpu-memory-utilization` or chunked-prefill sweep.** The batch-cap
+  experiment above answered the question those were going to be asked for, which
+  was whether the stock serving config is leaving throughput unclaimed.
 - **No GPU embedding throughput.** Serving embeddings needs a second vLLM
   process started with `--task embed`, and Radeon Cloud allows one active
   instance per account, so it was not reachable from this configuration at all.

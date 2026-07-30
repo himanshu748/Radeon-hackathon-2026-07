@@ -25,6 +25,13 @@ class Config:
     embed_api_key: str = field(default_factory=lambda: os.getenv("VULCAN_EMBED_API_KEY", ""))
     data_dir: Path = field(default_factory=lambda: Path(os.getenv("VULCAN_DATA_DIR", "~/.vulcan")).expanduser())
     max_steps: int = int(os.getenv("VULCAN_MAX_STEPS", "12"))
+    # Explicit task decomposition, measured and rejected. Neither
+    # qwen3:4b-instruct nor qwen3-ws:32k ever emitted a plan when instructed to,
+    # so completion was identical (3/4 and 4/4 respectively, both modes) while
+    # the instructions cost 18 to 21 seconds of extra wall clock per question.
+    # Off by default; VULCAN_PLAN=1 restores it so `vulcan plan-bench`
+    # reproduces the result. See bench-results/planning*.json.
+    plan: bool = field(default_factory=lambda: os.getenv("VULCAN_PLAN", "0") not in ("0", "false", "no"))
     temperature: float = float(os.getenv("VULCAN_TEMPERATURE", "0.2"))
     # Unset means "send nothing", because backends that don't understand
     # chat_template_kwargs reject the request outright. Set it only against

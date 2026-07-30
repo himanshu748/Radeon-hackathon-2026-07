@@ -5,6 +5,7 @@ dependency, trivially portable between the dev laptop and the ROCm box.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 from pathlib import Path
 
@@ -32,6 +33,15 @@ def _venv_dirs(root: Path) -> set[Path]:
 CHUNK_LINES = 60
 CHUNK_OVERLAP = 10
 EMBED_BATCH = 32
+
+
+#: Query terms that carry meaning. Two characters or fewer are noise.
+TOKEN = re.compile(r"[a-z_]{3,}")
+
+#: How much the lexical signal counts against dense cosine. The gain appears by
+#: 0.15 and is flat to 0.5, so the middle of the stable range is taken rather
+#: than the edge of it.
+LEXICAL_WEIGHT = 0.25
 
 
 class Index:
@@ -89,6 +99,24 @@ class Index:
             )
         return len(texts)
 
+    def _lexical(self, query: str, rows: list) -> np.ndarray:
+        """Term overlap with the path and the chunk, normalised to 0..1.
+
+        A path match counts triple. "which module implements the semantic
+        index" should reward `vulcan/rag.py` for containing the word, and one
+        line of path is otherwise a thin signal inside a 60-line chunk.
+        """
+        terms = set(TOKEN.findall(query.lower()))
+        if not terms:
+            return np.zeros(len(rows), dtype=np.float32)
+        raw = np.asarray(
+            [sum(3 for t in terms if t in r[0].lower())
+             + min(sum(1 for t in terms if t in r[3].lower()), len(terms))
+             for r in rows],
+            dtype=np.float32,
+        )
+        return raw / (raw.max() or 1.0)
+
     def search(self, query: str, k: int = 6) -> list[dict]:
         rows = self.db.execute("SELECT path, start_line, end_line, text, vec FROM chunks").fetchall()
         if not rows:
@@ -96,7 +124,12 @@ class Index:
         q = np.asarray(self.llm.embed([query])[0], dtype=np.float32)
         q /= np.linalg.norm(q) or 1.0
         mat = np.stack([np.frombuffer(r[4], dtype=np.float32) for r in rows])
-        scores = mat @ q
+        # Dense cosine alone bunches everything between about 0.59 and 0.65 on
+        # this corpus, because a 60-line chunk is dominated by its file header
+        # and every header resembles every question. Measured over seven
+        # known-answer queries, adding the lexical term takes top-1 from 4/7 to
+        # 6/7 and top-3 from 6/7 to 7/7. `vulcan rag-bench` reproduces it.
+        scores = mat @ q + LEXICAL_WEIGHT * self._lexical(query, rows)
         top = np.argsort(-scores)[:k]
         return [
             {"path": rows[i][0], "start": rows[i][1], "end": rows[i][2], "text": rows[i][3], "score": float(scores[i])}

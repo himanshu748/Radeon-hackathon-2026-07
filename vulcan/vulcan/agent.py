@@ -23,6 +23,7 @@ You work in a loop. On each turn reply with EXACTLY ONE JSON object, nothing els
 or, when you have the answer:
   {"thought": "...", "final": "<answer for the user, cite files as path:line>"}
 
+{planning}
 Strategy: start with search_code, it is almost always the fastest route. Answer as soon as you have enough evidence; do not keep exploring.
 
 Tools:
@@ -38,6 +39,26 @@ Prior session notes:
 {memory}
 """
 
+PLANNING = """If the request has more than one part, make your FIRST reply a plan instead:
+  {"thought": "...", "plan": ["first part", "second part"]}
+One plan per request, at most 5 parts, and only when there is genuinely more
+than one thing to find out. A single question needs no plan; go straight to a
+tool. After planning, work through the parts and answer all of them in `final`.
+"""
+
+#: A search observation is the largest thing the agent ever reads. Six full
+#: chunks blew a 4096-token window on their own, so both the count and each
+#: hit are bounded; the model can always read_file for the full text.
+SEARCH_HITS = 4
+SEARCH_HIT_CHARS = 900
+
+#: How much of the conversation so far is carried into the next turn. Without
+#: any, `vulcan chat` was multi-turn in name only: each question started from an
+#: empty conversation, so "what about the other one?" had no referent. Bounded
+#: because an unbounded history is the same context overflow in slow motion:
+#: oldest exchanges are dropped first, and tool observations are never kept.
+HISTORY_CHARS = 4000
+
 JSON_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
@@ -48,11 +69,23 @@ class Agent:
         self.llm = LLM(cfg)
         self.index = Index(cfg, self.llm, index_name)
         self.memory = Memory(cfg, project=str(root))
+        #: Completed turns only: the question and the answer, never the tool
+        #: chatter in between, which is what made a single turn overflow.
+        self.history: list[dict] = []
 
     def _dispatch(self, tool: str, args: dict) -> str:
         if tool == "search_code":
             hits = self.index.search(args.get("query", ""))
-            return "\n---\n".join(f"{h['path']}:{h['start']}-{h['end']} (score {h['score']:.2f})\n{h['text']}" for h in hits) or "no results"
+            # Every other tool clips its output; this one did not, and six
+            # 60-line chunks is a single observation big enough to exceed a
+            # 4096-token context on its own. That surfaced as an opaque 400
+            # from the backend part way through a session.
+            parts = [
+                f"{h['path']}:{h['start']}-{h['end']} (score {h['score']:.2f})\n"
+                + tools.clip(h["text"], SEARCH_HIT_CHARS)
+                for h in hits[:SEARCH_HITS]
+            ]
+            return "\n---\n".join(parts) or "no results"
         if tool == "read_file":
             return tools.read_file(self.root, args.get("path", ""), args.get("start", 1), args.get("end"))
         if tool == "list_dir":
@@ -71,9 +104,12 @@ class Agent:
     def run(self, task: str, on_step=None) -> str:
         notes = "\n".join(f"- {n}" for n in self.memory.recall()) or "(none)"
         messages = [
-            {"role": "system", "content": SYSTEM.replace("{memory}", notes)},
+            {"role": "system", "content": SYSTEM.replace("{memory}", notes)
+                                            .replace("{planning}", PLANNING if self.cfg.plan else "")},
+            *self.history,
             {"role": "user", "content": task},
         ]
+        plan: list[str] = []
         for _ in range(self.cfg.max_steps):
             reply = self.llm.chat(messages, stream=True).text
             match = JSON_RE.search(reply)
@@ -87,11 +123,51 @@ class Agent:
                 messages.append({"role": "assistant", "content": reply})
                 messages.append({"role": "user", "content": f"Invalid JSON ({e}). Retry."})
                 continue
+            if "plan" in step and not plan:
+                plan = [str(p) for p in step["plan"]][:5]
+                if on_step:
+                    on_step(step)
+                messages.append({"role": "assistant", "content": match.group()})
+                messages.append({"role": "user", "content": "Plan noted. Begin the first part."})
+                continue
+            if "plan" in step:
+                # A second plan means the model is re-planning instead of
+                # working, which burns steps and never terminates.
+                messages.append({"role": "assistant", "content": match.group()})
+                messages.append({"role": "user", "content": "You already planned. Use a tool or give final."})
+                continue
+
+            if "tool" not in step and "final" not in step:
+                # A reply of just {"thought": ...} used to be dispatched as a
+                # tool named "", which answers ERROR: unknown tool. A few of
+                # those in a row and the model concludes its tools are broken
+                # and gives up, which is what it did: "I cannot proceed because
+                # all tools are unavailable."
+                messages.append({"role": "assistant", "content": match.group()})
+                messages.append({"role": "user", "content":
+                                 "That reply had no `tool` and no `final`. "
+                                 "Reply with one JSON object containing either."})
+                continue
+
             if on_step:
                 on_step(step)
             if "final" in step:
+                self._remember_turn(task, step["final"])
                 return step["final"]
             obs = self._dispatch(step.get("tool", ""), step.get("args", {}))
             messages.append({"role": "assistant", "content": match.group()})
-            messages.append({"role": "user", "content": f"Observation:\n{obs}"})
-        return "Step limit reached without a final answer."
+            # The plan is repeated with each observation rather than stated once.
+            # Left in the first message alone it scrolls out of attention, and
+            # the model answers part one of a three-part question and stops.
+            tail = f"\n\nStill to cover: {'; '.join(plan)}" if plan else ""
+            messages.append({"role": "user", "content": f"Observation:\n{obs}{tail}"})
+        give_up = "Step limit reached without a final answer."
+        self._remember_turn(task, give_up)
+        return give_up
+
+    def _remember_turn(self, task: str, answer: str) -> None:
+        """Keep the exchange for the next turn, oldest dropped first."""
+        self.history += [{"role": "user", "content": task},
+                         {"role": "assistant", "content": answer}]
+        while sum(len(m["content"]) for m in self.history) > HISTORY_CHARS and len(self.history) > 2:
+            del self.history[:2]

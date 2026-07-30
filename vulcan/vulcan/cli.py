@@ -41,15 +41,25 @@ def index(path: Path = typer.Argument(..., exists=True), name: str = "default") 
     console.print(f"[green]Indexed {n} chunks from {path}[/green]")
 
 
+
+def show_step(step: dict) -> None:
+    """Render one agent step. Shared so `ask` and `chat` show the same thing."""
+    if "plan" in step:
+        console.print("[cyan]plan[/cyan]")
+        for i, part in enumerate(step["plan"], 1):
+            console.print(f"[dim]  {i}. {part}[/dim]")
+    elif "tool" in step:
+        console.print(f"[dim]→ {step['tool']}[/dim]")
+    else:
+        console.print("[dim]→ final[/dim]")
+
 @app.command()
 def ask(question: str, root: Path = Path("."), name: str = "default") -> None:
     """One-shot agent run against an indexed codebase."""
     cfg = load()
     agent = Agent(cfg, root.resolve(), name)
 
-    def show(step: dict) -> None:
-        if "tool" in step:
-            console.print(f"[dim]→ {step['tool']} {step.get('args', {})}[/dim]")
+    show = show_step
 
     answer = agent.run(question, on_step=show)
     console.print(Panel(answer, title="Vulcan", border_style="cyan"))
@@ -68,7 +78,7 @@ def chat(root: Path = Path("."), name: str = "default") -> None:
             break
         if not question.strip():
             continue
-        answer = agent.run(question, on_step=lambda s: console.print(f"[dim]→ {s.get('tool', 'final')}[/dim]"))
+        answer = agent.run(question, on_step=show_step)
         console.print(Panel(answer, border_style="cyan"))
 
 
@@ -116,3 +126,26 @@ def bench_compare(baseline: Path, candidate: Path) -> None:
 
 if __name__ == "__main__":
     app()
+
+
+@app.command("plan-bench")
+def plan_bench(
+    root: Path = Path("."),
+    out: Path = Path("bench-results/planning.json"),
+    name: str = "default",
+) -> None:
+    """Measure whether decomposing a request pays for its extra round trip."""
+    from .planbench import sweep
+
+    sweep(root.resolve(), str(out), name)
+
+
+@app.command("rag-bench")
+def rag_bench(
+    name: str = "default",
+    out: Path = Path("bench-results/retrieval.json"),
+) -> None:
+    """Sweep the lexical weight and report retrieval top-1 and top-3."""
+    from .ragbench import sweep
+
+    sweep(name, str(out))

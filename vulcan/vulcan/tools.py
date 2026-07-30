@@ -13,8 +13,13 @@ ALLOWED_CMDS = {"pytest", "python", "python3", "npm", "node", "cargo", "go", "ru
 MAX_OBS = 6000
 
 
-def _clip(s: str) -> str:
-    return s if len(s) <= MAX_OBS else s[:MAX_OBS] + f"\n...[truncated {len(s) - MAX_OBS} chars]"
+def clip(s: str, limit: int = 0) -> str:
+    """Bound one observation. An unbounded one can exceed the whole context."""
+    limit = limit or MAX_OBS
+    return s if len(s) <= limit else s[:limit] + f"\n...[truncated {len(s) - limit} chars]"
+
+
+_clip = clip  # existing call sites
 
 
 def read_file(root: Path, path: str, start: int = 1, end: int | None = None) -> str:

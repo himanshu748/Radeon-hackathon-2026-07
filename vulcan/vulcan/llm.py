@@ -89,7 +89,16 @@ class LLM:
         n_tokens = 0
         try:
             with self._client.stream("POST", "/chat/completions", json=payload) as r:
-                r.raise_for_status()
+                if r.status_code >= 400:
+                    # raise_for_status() on a streaming response reports the
+                    # code and nothing else, and reading .text afterwards fails
+                    # with ResponseNotRead, so the server's own explanation is
+                    # unreachable exactly when it is needed. Read the body
+                    # first and put it in the error.
+                    r.read()
+                    raise RuntimeError(
+                        f"{r.status_code} from {self.cfg.base_url}: {r.text[:400]}"
+                    )
                 for line in r.iter_lines():
                     if not line.startswith("data: ") or line == "data: [DONE]":
                         continue

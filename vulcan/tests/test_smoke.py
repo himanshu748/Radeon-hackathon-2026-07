@@ -76,3 +76,82 @@ def test_bench_compare(tmp_path: Path):
     assert "3.00x" in out
     assert out.count("|") > 10
     assert "n/a" in out
+
+
+class _ScriptedLLM:
+    """Replays a fixed list of replies, so the agent loop is testable offline."""
+
+    def __init__(self, replies):
+        self.replies = list(replies)
+        self.seen = []
+
+    def chat(self, messages, stream=False):
+        self.seen.append(messages[-1]["content"])
+        return ChatResult(text=self.replies.pop(0), prompt_tokens=0,
+                          completion_tokens=0, ttft_s=None, total_s=0.0)
+
+    def embed(self, texts):
+        return [[0.0, 1.0] for _ in texts]
+
+
+def _agent(tmp_path: Path, replies, monkeypatch):
+    from vulcan import agent as agent_mod
+    monkeypatch.setattr(agent_mod, "LLM", lambda cfg: _ScriptedLLM(replies))
+    cfg = Config(data_dir=tmp_path / "data")
+    a = agent_mod.Agent(cfg, tmp_path, "t")
+    return a
+
+
+def test_thought_only_reply_is_not_dispatched_as_a_tool(tmp_path: Path, monkeypatch):
+    """It used to become tool "" -> ERROR: unknown tool, and the agent then
+    told the user all its tools were unavailable."""
+    a = _agent(tmp_path, ['{"thought": "thinking"}',
+                          '{"thought": "ok", "final": "done"}'], monkeypatch)
+    assert a.run("q") == "done"
+    assert not any("unknown tool" in m for m in a.llm.seen)
+
+
+def test_search_observation_is_bounded(tmp_path: Path, monkeypatch):
+    """One unbounded search observation could exceed the whole context."""
+    from vulcan import agent as agent_mod
+    a = _agent(tmp_path, ['{"thought": "x", "final": "y"}'], monkeypatch)
+    monkeypatch.setattr(a.index, "search", lambda q, k=6: [
+        {"path": f"f{i}.py", "start": 1, "end": 60, "text": "x" * 20000, "score": 0.5}
+        for i in range(6)
+    ])
+    obs = a._dispatch("search_code", {"query": "anything"})
+    assert len(obs) < agent_mod.SEARCH_HITS * (agent_mod.SEARCH_HIT_CHARS + 200)
+    assert obs.count("truncated") == agent_mod.SEARCH_HITS
+
+
+def test_lexical_signal_lifts_the_matching_path(tmp_path: Path, monkeypatch):
+    """Dense scores bunch together; the path term is what separates them."""
+    cfg = Config(data_dir=tmp_path / "data")
+    idx = rag.Index(cfg, _ScriptedLLM([]), "t")
+    rows = [("vulcan/rag.py", 1, 60, "def search(): ..."),
+            ("vulcan/cli.py", 1, 60, "import typer")]
+    lex = idx._lexical("which module implements the rag index", rows)
+    assert lex[0] > lex[1]
+
+
+def test_chat_carries_context_between_turns(tmp_path: Path, monkeypatch):
+    """`chat` was multi-turn in name only: turn 2 started from an empty
+    conversation, so a follow-up had no referent."""
+    a = _agent(tmp_path, ['{"thought":"t","final":"A1"}',
+                          '{"thought":"t","final":"A2"}'], monkeypatch)
+    a.run("first question")
+    a.run("second question")
+    turn2 = a.llm.seen[-1]
+    assert a.history, "the exchange was recorded"
+    assert any("first question" in m["content"] for m in a.history)
+    assert any("A1" in m["content"] for m in a.history)
+
+
+def test_history_is_bounded(tmp_path: Path, monkeypatch):
+    """An unbounded history is the context overflow again, just slower."""
+    from vulcan import agent as agent_mod
+    a = _agent(tmp_path, ['{"thought":"t","final":"%s"}' % ("y" * 3000)] * 6, monkeypatch)
+    for i in range(6):
+        a.run(f"question {i} " + "x" * 500)
+    assert sum(len(m["content"]) for m in a.history) <= agent_mod.HISTORY_CHARS + 4000
+    assert len(a.history) >= 2

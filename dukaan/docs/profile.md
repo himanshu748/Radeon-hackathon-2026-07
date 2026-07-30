@@ -48,6 +48,7 @@ commission artwork for it.
 | Story or reel slot | 1024x1820 still plus a 2-second clip with generated ambient audio |
 | Marketplace or shop-page header | 1820x1024 banner |
 | Price change | `dukaan relabel` recomposes the same stills with new type, no GPU |
+| Wrong moment in the shot | The browser UI's scrubber rebuilds from any of the 49 frames, no GPU |
 
 **Why the constraints matter.** Sellers photograph against whatever is behind
 the counter, so the background is rarely one flat colour. They type prices and
@@ -92,6 +93,27 @@ purpose. The cutout is a least-squares fit; the still selection is a Laplacian
 variance; the reshaping is an index map; the type is a font. Spending GPU
 credits on any of them would be waste. The GPU does the one thing with no CPU
 equivalent, and it does it **once per pack** rather than once per output.
+
+### 3.1 Two surfaces, one pipeline
+
+`dukaan serve` puts the same pipeline behind a browser form: photo, headline,
+price, look, button. It calls `build_pack`, the path the CLI uses, so the two
+surfaces cannot disagree about what the tool does. The rules list a web UI and a
+CLI plus demo workflow as valid delivery forms; this ships both.
+
+The scrubber is the part that only this architecture allows. Because the only
+generative model on the instance is a video model, a pack is not three renders,
+it is one generated scene with three moments lifted out of it. The other 46
+frames are already on disk and already paid for, so choosing a different one
+rebuilds the creative on the CPU in milliseconds and reports **0 seconds of
+GPU**. A tool built on an image model cannot offer that, because each candidate
+would be another generation.
+
+Measured through the UI against the live Radeon: 94.4 s for 49 frames at
+768x768, then rebuilding the square from moment 30 instead of moment 1 at no
+GPU cost. It is also the honest answer to a real failure mode: the model
+occasionally leaves an artefact in a frame, and the seller can simply pick
+another moment instead of paying for a re-roll.
 
 ## 4. Models and algorithms
 
@@ -153,6 +175,34 @@ differences against the fit:
 A plane was tried first. It cleared the top-to-bottom wash and left an
 elliptical pool of backdrop exactly where the product sits, because catalogue
 lighting pools rather than ramps. The quadratic basis is what fixed it.
+
+**Per-pixel thresholding is not enough on its own**, and the two ways it fails
+were both visible in an earlier version of the gallery. A light product on a lit
+sweep reads partly as backdrop, so the middle of it comes back full of holes: on
+the silver bracelet that was 14,497 pixels of the band. And a lobe of backdrop
+the fit cannot account for survives as a patch stuck to the product. Both are
+obvious once whole regions are considered instead of pixels, which is what
+`dukaan/regions.py` does: drop blobs far smaller than the product, then close
+background pockets that cannot reach the frame edge.
+
+The size limit on that second step matters more than it looks. A first version
+closed every enclosed pocket and nearly doubled the gilt bangles' mask, from
+14.7% of the frame to 28.2%, because **a bangle's interior is real backdrop and
+filling it turns two rings into two discs**. A teapot handle has the same
+property. Only pockets smaller than 2% of the product's own area are closed now.
+
+**A known limitation.** One of the sample photographs, the blue-and-white
+porcelain vase, has a vignette *behind* the object. No fit to the border ring
+can see it, and the lobe it leaves is genuinely fused to the vase, so no region
+filter can separate the two. A morphological opening was measured as a way out
+and rejected: at radius 6 the lobe still held 33,110 pixels and at radius 12
+still 15,403, while by radius 10 the brass ewer had lost 1.9% of frame, which
+is its spout and handle. Refitting the surface iteratively on non-product pixels
+was also measured, and made the lobe marginally worse while shrinking the silver
+bracelet's mask by 1.9%. Paying real product detail for a defect that survives
+anyway is a bad trade, so the opening ships disabled with its measurements next
+to it, and that photograph is not shown as if it were good output. The honest
+fix is a matting model, which section 8 lists as the next step.
 
 ### 4.3 Still selection
 

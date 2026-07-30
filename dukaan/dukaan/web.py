@@ -36,7 +36,7 @@ from .spec import FORMATS, FORMATS_BY_NAME, STYLES, STYLES_BY_NAME, Brief
 STYLE_BLURB = {
     "studio": "clean catalogue white, for marketplaces",
     "festive": "warm reds and marigold, string lights, for Diwali",
-    "daylight": "fresh window light on wood, honest and everyday",
+    "daylight": "pale wood and soft morning light, honest and everyday",
     "midnight": "dark and premium, single rim light",
 }
 

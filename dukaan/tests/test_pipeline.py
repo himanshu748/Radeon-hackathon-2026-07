@@ -261,3 +261,74 @@ class TestBrief:
     def test_offline_flag_follows_instance_url(self):
         assert Config(instance="").offline is True
         assert Config(instance="https://x/instances/y").offline is False
+
+
+class TestRegions:
+    """The cutout decides per pixel; these are the region-level repairs."""
+
+    def _ring_with_speck(self):
+        import numpy as np
+        m = np.zeros((60, 60), bool)
+        m[10:50, 10:50] = True
+        m[22:38, 22:38] = False   # a hole 16% of the ring's area
+        m[2:5, 2:5] = True        # a detached speck
+        return m
+
+    def test_label_counts_separate_regions(self):
+        from dukaan.regions import label
+        _, n = label(self._ring_with_speck())
+        assert n == 2
+
+    def test_largest_region_drops_the_speck(self):
+        from dukaan.regions import largest_region
+        out = largest_region(self._ring_with_speck())
+        assert not out[2:5, 2:5].any()
+        assert out[12, 12]
+
+    def test_fill_holes_leaves_a_bangle_open(self):
+        """A ring's interior is real backdrop. Filling it makes a disc."""
+        from dukaan.regions import fill_holes
+        assert not fill_holes(self._ring_with_speck())[30, 30]
+
+    def test_fill_holes_closes_small_speckle(self):
+        import numpy as np
+        from dukaan.regions import fill_holes
+        m = np.ones((60, 60), bool)
+        m[0, :] = m[-1, :] = m[:, 0] = m[:, -1] = False   # keep a border
+        m[30, 30] = False                                  # one stray pixel
+        assert fill_holes(m)[30, 30]
+
+    def test_clean_keeps_small_detached_detail(self):
+        """Fine engraving fragments the mask; pruning to the largest ate it."""
+        import numpy as np
+        from dukaan.regions import clean
+        m = np.zeros((60, 60), bool)
+        m[10:50, 10:40] = True    # the body
+        m[52, 20:30] = True       # a thin detached sliver of real detail
+        assert clean(m)[52, 25], "detail survived"
+
+    def test_clean_severs_a_thin_necked_lobe(self):
+        """The vignette streak case: real backdrop, genuinely touching."""
+        import numpy as np
+        from dukaan.regions import clean
+        m = np.zeros((80, 120), bool)
+        m[20:60, 10:50] = True     # the product
+        m[38:42, 50:110] = True    # a thin lobe joined to it
+        out = clean(m, open_radius=4, prune=True)
+        assert out[40, 30], "product survived"
+        assert not out[40, 100], "lobe removed"
+
+    def test_cutout_mask_is_solid_body(self):
+        """End to end on the photograph that exposed both failures."""
+        import numpy as np
+        from pathlib import Path
+        from PIL import Image
+        from dukaan.backend import chroma_cutout
+        photo = Path("examples/porcelain-vase.png")
+        if not photo.exists():
+            pytest.skip("example photo not present")
+        a = np.asarray(chroma_cutout(Image.open(photo).convert("RGB")).split()[3]) > 128
+        # The body of the vase must be continuous, not speckled.
+        ys, xs = np.nonzero(a)
+        cy, cx = int(np.median(ys)), int(np.median(xs))
+        assert a[cy - 12:cy + 12, cx - 12:cx + 12].mean() > 0.98

@@ -28,6 +28,7 @@ from PIL import Image, ImageFilter
 
 from .config import Config
 from .instance import Instance
+from . import regions
 from .spec import Style
 
 
@@ -139,7 +140,15 @@ def chroma_cutout(image: Image.Image, tolerance: int = 34, feather: float = 1.2,
         coef = fit(trimmed)
 
     surface = (basis() @ coef).reshape(h, w, 3)
-    mask = (np.abs(arr - surface).max(axis=-1) > tolerance).astype(np.uint8) * 255
+    keep_px = np.abs(arr - surface).max(axis=-1) > tolerance
+
+    # Deciding per pixel is not enough information, and the two ways it fails
+    # are both visible in a finished creative: a light product on a lit sweep
+    # comes back full of holes, and a vignette the fit cannot see survives as a
+    # streak stuck to the product. Both are obvious once whole regions are
+    # considered rather than pixels. See dukaan/regions.py.
+    keep_px = regions.clean(keep_px)
+    mask = keep_px.astype(np.uint8) * 255
 
     alpha = Image.fromarray(mask, "L")
     if feather:

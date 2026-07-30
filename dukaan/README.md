@@ -18,6 +18,15 @@ One photo, four looks, the product identical in every one:
 
 ![four styles](docs/gallery/one-photo-four-styles.png)
 
+Every product under every look, twelve packs, one GPU pass each:
+
+![style matrix](docs/gallery/style-matrix.png)
+
+The model is allowed to alter the product, so that it does not is measured
+rather than asserted. Plate on the left, then the frames each pack selected:
+
+![product survives](docs/gallery/product-survives.png)
+
 ## Run it
 
 ```bash

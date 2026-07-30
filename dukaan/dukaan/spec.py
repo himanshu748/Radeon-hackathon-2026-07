@@ -79,11 +79,21 @@ STYLES: tuple[Style, ...] = (
     ),
     Style(
         "daylight",
-        "fresh daylight product shot on a clean wooden surface, natural window light, "
-        "airy shadows, honest everyday look",
-        "clutter, text, watermark, distorted product, artificial",
-        (238, 232, 220),
-        (40, 38, 34),
+        "fresh daylight product shot, pale wooden surface, soft diffused morning "
+        "light, gentle shadows, honest everyday look",
+        "clutter, text, watermark, distorted product, artificial, window frame, "
+        "hard shadow edge, split background, reshaped product, closed gap, "
+        "thicker object, changed proportions",
+        # Pale birch, deliberately between two failures. At (238, 232, 220) this
+        # style sat within a few values of studio's (243, 240, 234) and produced
+        # the same picture twice. At a full oak (198, 168, 132) it was properly
+        # distinct, but the plate had drifted far enough from the product that
+        # conditioning weakened and the model re-interpreted the silver
+        # bracelet: an open flat bangle came back as a closed thick ring, which
+        # is the one thing this tool must not do. Backdrop choice is a
+        # conditioning strength dial, not a palette.
+        (224, 203, 175),
+        (38, 30, 22),
     ),
     Style(
         "midnight",

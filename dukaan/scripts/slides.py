@@ -7,6 +7,7 @@ a rescale.
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -94,7 +95,7 @@ def gallery_card(out: Path, packs: list[tuple[Path, str, str]]) -> None:
     """Every pack in one frame, so the range of looks is visible at a glance."""
     img, d = _slide()
     y = _title(d, "Three products, three looks",
-               "Same pipeline, same 65 seconds of GPU each. Only the style name changed.")
+               "Same pipeline, one model load shared. Only the style name changed.")
     box = 330
     loaded = [(Image.open(p).convert("RGB"), style, secs) for p, style, secs in packs]
     for im, _, _ in loaded:
@@ -166,6 +167,20 @@ def finding_card(out: Path) -> None:
     img.save(out)
 
 
+
+def _test_count() -> int:
+    """How many tests the suite actually collects, right now."""
+    import subprocess
+    try:
+        out = subprocess.run([".venv/bin/python", "-m", "pytest", "--collect-only", "-q"],
+                             capture_output=True, text=True, timeout=120).stdout
+        m = re.search(r"(\d+) tests? collected", out)
+        if m:
+            return int(m.group(1))
+    except Exception:
+        pass
+    raise SystemExit("could not count tests; refusing to print a guess on a slide")
+
 def fix_card(out: Path) -> None:
     img, d = _slide()
     y = _title(d, "Two processes that never overlap",
@@ -184,7 +199,10 @@ def fix_card(out: Path) -> None:
         ry += 54
     d.text((110, ry + 40), "65 s of GPU time per pack. 49 frames at 768x768, with audio.",
            font=_font(26), fill=INK)
-    d.text((110, ry + 82), "30 tests, none of which need a GPU.", font=_font(26), fill=DIM)
+    # Counted, not typed. This slide said 30 while the suite had grown to 37,
+    # and the tape beside it said 26. A number on a slide is a number that rots.
+    d.text((110, ry + 82), f"{_test_count()} tests, none of which need a GPU.",
+           font=_font(26), fill=DIM)
     img.save(out)
 
 
@@ -208,16 +226,24 @@ if __name__ == "__main__":
     formats_card(dest / "03-formats.png", src / f"{style}_square.png",
                  src / f"{style}_story.png", src / f"{style}_banner.png",
                  (f["square"], f["story"], f["banner"]))
+    # Pinned to the style matrix rather than whatever `out/` happens to hold.
+    # Scanning the directory picked up whichever packs were oldest, so this card
+    # kept showing output from before the cutout was repaired while the gallery
+    # beside it showed the fixed version.
     packs = []
-    for d in sorted(Path("out").iterdir()) if Path("out").is_dir() else []:
+    for d, style in (("out/matrix-festive/brass-ewer", "festive"),
+                     ("out/matrix-midnight/gilt-bangles", "midnight"),
+                     ("out/matrix-studio/silver-bracelet", "studio")):
+        d = Path(d)
         m = sorted(d.glob("*_manifest.json"))
         if not m:
             continue
         mm = json.loads(m[0].read_text())
-        square = d / f"{mm['style']}_square.png"
+        square = d / f"{style}_square.png"
         if square.exists():
-            secs = mm.get("run", {}).get("seconds")
-            packs.append((square, mm["style"], f"{secs} s on the Radeon" if secs else ""))
+            run = mm.get("run", {})
+            secs = run.get("sample_seconds") or run.get("seconds")
+            packs.append((square, style, f"{secs} s of sampling" if secs else ""))
     if len(packs) >= 2:
         gallery_card(dest / "04-gallery.png", packs[:3])
 

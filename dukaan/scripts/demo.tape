@@ -67,7 +67,7 @@ Type "ls -la out/brass-ewer/*.png out/brass-ewer/*.wav"
 Enter
 Sleep 6s
 
-Type "# 26 tests, and none of them need the GPU."
+Type "# The suite, and none of it needs the GPU."
 Enter
 Sleep 1s
 Type ".venv/bin/python -m pytest tests/ -q 2>&1 | tail -3"

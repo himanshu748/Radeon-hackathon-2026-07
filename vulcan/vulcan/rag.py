@@ -19,7 +19,17 @@ SOURCE_EXTS = {
     ".cc", ".cpp", ".h", ".hpp", ".md", ".toml", ".yaml", ".yml", ".json",
     ".sh", ".sql", ".swift", ".kt",
 }
-SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "dist", "build", "__pycache__", ".next", "target"}
+SKIP_DIRS = {
+    ".git", "node_modules", ".venv", "venv", "dist", "build", "__pycache__", ".next", "target",
+    ".pytest_cache", ".mypy_cache", ".ruff_cache", "htmlcov",
+}
+
+#: JSON earns its place only when it describes the project. Everything else with
+#: that extension is data, and data competes with code for the same top-k slots:
+#: this repository had fifteen benchmark result files embedded as source, and
+#: "record every outbound HTTP request host" returned two of them plus a shell
+#: script, while the module that does the recording never appeared at all.
+JSON_MANIFESTS = {"package.json", "tsconfig.json", "composer.json", "deno.json"}
 
 
 def _venv_dirs(root: Path) -> set[Path]:
@@ -38,10 +48,17 @@ EMBED_BATCH = 32
 #: Query terms that carry meaning. Two characters or fewer are noise.
 TOKEN = re.compile(r"[a-z_]{3,}")
 
-#: How much the lexical signal counts against dense cosine. The gain appears by
-#: 0.15 and is flat to 0.5, so the middle of the stable range is taken rather
-#: than the edge of it.
-LEXICAL_WEIGHT = 0.25
+#: How much the lexical signal counts against dense cosine. 0.25 sat in the
+#: middle of a plateau that ran to 0.5, until benchmark JSON and cache files
+#: stopped being indexed as source. On the clean index the plateau is gone:
+#: 0.15 is the peak and everything above it falls away, 0.5 and 1.0 losing a
+#: top-3 hit as well. Cleaning the corpus is what the lexical weight had been
+#: quietly paying for.
+#:
+#: Seven queries decide this, so one of them is the whole difference between
+#: 0.0, 0.15 and 0.25. What the sweep supports firmly is the shape rather than
+#: the exact value: weight the lexical signal lightly, and never heavily.
+LEXICAL_WEIGHT = 0.15
 
 
 class Index:
@@ -67,6 +84,8 @@ class Index:
             if any(p in skip_roots for p in path.parents):
                 continue
             if not path.is_file() or path.suffix not in SOURCE_EXTS:
+                continue
+            if path.suffix == ".json" and path.name not in JSON_MANIFESTS:
                 continue
             try:
                 lines = path.read_text(errors="ignore").splitlines()

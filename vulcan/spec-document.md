@@ -150,14 +150,32 @@ correct file is not in dispute:
 
 | lexical weight | top-1 | top-3 |
 |---|---|---|
-| 0.0, dense only | 4/7 | 6/7 |
-| 0.15 | 6/7 | 7/7 |
-| **0.25, shipped** | **6/7** | **7/7** |
-| 0.5 | 6/7 | 7/7 |
-| 1.0 | 5/7 | 7/7 |
+| 0.0, dense only | 5/7 | 7/7 |
+| **0.15, shipped** | **6/7** | **7/7** |
+| 0.25 | 5/7 | 7/7 |
+| 0.5 | 4/7 | 6/7 |
+| 1.0 | 4/7 | 6/7 |
 
-The far end degrades, so the shipped value sits inside the plateau rather than
-at its edge. `vulcan rag-bench` reproduces the table.
+`vulcan rag-bench` reproduces the table.
+
+**This table replaced an earlier one, and the correction is the interesting
+part.** The first sweep found a plateau: 0.15, 0.25 and 0.5 all scored 6/7 and
+7/7, so 0.25 shipped as the middle of a stable range rather than the edge of
+one. That sweep ran against an index which turned out to be indexing its own
+benchmark output. `.json` was in the source extension list, so fifteen result
+files and a pytest cache were embedded as code, and a query about recording
+outbound hosts returned two JSON files and a shell script while
+`vulcan/privacy.py` never appeared at all.
+
+With the corpus restricted to source, the plateau disappears. Dense-only
+improves, because the noise it was ranking is gone, and every weight above 0.15
+falls away, 0.5 and 1.0 losing a top-3 hit as well. The lexical weight had been
+paying for the noise, and once the noise went, carrying it stopped being free.
+
+Seven queries decide this, so a single query separates 0.0, 0.15 and 0.25, and
+the shipped value is not claimed to be optimal to two decimal places. What the
+sweep supports firmly is the shape: weight the lexical signal lightly, and never
+heavily.
 
 ### 3.2 Task decomposition was measured and rejected
 

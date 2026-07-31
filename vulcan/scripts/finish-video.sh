@@ -50,7 +50,7 @@ Continuous batching on the Radeon, 1 to 8 concurrent:
 The capped run scales to exactly its own cap
 
 Retrieval: lexical weight swept, not guessed
-top-1 4/7 dense only, 6/7 hybrid; 1.0 degrades again
+top-1 5/7 dense only, 6/7 hybrid; 0.5 and 1.0 degrade
 
 Task decomposition: built, measured, rejected
 neither model ever used it, 18 to 21s slower

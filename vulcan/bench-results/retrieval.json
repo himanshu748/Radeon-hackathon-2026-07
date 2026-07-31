@@ -2,32 +2,32 @@
   "index": "planbench",
   "chunks": 73,
   "embed_model": "mxbai-embed-large",
-  "shipped_weight": 0.25,
+  "shipped_weight": 0.15,
   "weights": {
     "0.0": {
       "weight": 0.0,
-      "top1": 4,
-      "top3": 6,
+      "top1": 5,
+      "top3": 7,
       "of": 7,
       "detail": [
         {
           "question": "which module implements the semantic index",
           "expected": "rag.py",
           "top3": [
-            "vulcan/cli.py",
-            "vulcan/agent.py",
-            "vulcan/planbench.py"
+            "vulcan/ragbench.py",
+            "vulcan/rag.py",
+            "scripts/followup.py"
           ],
           "hit1": false,
-          "hit3": false
+          "hit3": true
         },
         {
           "question": "where is persistent memory stored",
           "expected": "memory.py",
           "top3": [
             "vulcan/memory.py",
-            "docs/spec.md",
-            "vulcan/bench.py"
+            "scripts/followup.py",
+            "docs/spec.md"
           ],
           "hit1": true,
           "hit3": true
@@ -36,11 +36,11 @@
           "question": "which module talks to the LLM",
           "expected": "llm.py",
           "top3": [
-            "vulcan/llm.py",
+            "scripts/followup.py",
             "vulcan/llm.py",
             "vulcan/agent.py"
           ],
-          "hit1": true,
+          "hit1": false,
           "hit3": true
         },
         {
@@ -48,7 +48,7 @@
           "expected": "tools.py",
           "top3": [
             "vulcan/tools.py",
-            "pyproject.toml",
+            "tests/test_smoke.py",
             "tests/test_smoke.py"
           ],
           "hit1": true,
@@ -59,7 +59,7 @@
           "expected": "agent.py",
           "top3": [
             "vulcan/agent.py",
-            "vulcan/agent.py",
+            "scripts/followup.py",
             "vulcan/agent.py"
           ],
           "hit1": true,
@@ -69,22 +69,22 @@
           "question": "which module measures throughput",
           "expected": "bench.py",
           "top3": [
-            "bench-results/demo-live.json",
-            "bench-results/radeon-vllm-concurrency.json",
-            "vulcan/bench.py"
+            "vulcan/bench.py",
+            "vulcan/bench.py",
+            "docs/spec.md"
           ],
-          "hit1": false,
+          "hit1": true,
           "hit3": true
         },
         {
           "question": "where is runtime configuration loaded",
           "expected": "config.py",
           "top3": [
-            "scripts/serving-sweep.sh",
             "vulcan/config.py",
-            "docs/radeon-deploy.md"
+            "scripts/serving-sweep.sh",
+            "vulcan/config.py"
           ],
-          "hit1": false,
+          "hit1": true,
           "hit3": true
         }
       ]
@@ -99,9 +99,9 @@
           "question": "which module implements the semantic index",
           "expected": "rag.py",
           "top3": [
-            "vulcan/planbench.py",
-            "vulcan/cli.py",
-            "vulcan/rag.py"
+            "vulcan/ragbench.py",
+            "vulcan/rag.py",
+            "scripts/followup.py"
           ],
           "hit1": false,
           "hit3": true
@@ -111,8 +111,8 @@
           "expected": "memory.py",
           "top3": [
             "vulcan/memory.py",
-            "docs/spec.md",
-            "docs/spec.md"
+            "scripts/followup.py",
+            "README.md"
           ],
           "hit1": true,
           "hit3": true
@@ -122,7 +122,7 @@
           "expected": "llm.py",
           "top3": [
             "vulcan/llm.py",
-            "vulcan/llm.py",
+            "scripts/followup.py",
             "vulcan/planbench.py"
           ],
           "hit1": true,
@@ -134,7 +134,7 @@
           "top3": [
             "vulcan/tools.py",
             "vulcan/tools.py",
-            "vulcan/planbench.py"
+            "vulcan/ragbench.py"
           ],
           "hit1": true,
           "hit3": true
@@ -155,8 +155,8 @@
           "expected": "bench.py",
           "top3": [
             "vulcan/planbench.py",
-            "bench-results/demo-live.json",
-            "bench-results/radeon-vllm-concurrency.json"
+            "vulcan/ragbench.py",
+            "docs/spec.md"
           ],
           "hit1": true,
           "hit3": true
@@ -166,8 +166,8 @@
           "expected": "config.py",
           "top3": [
             "vulcan/config.py",
-            "vulcan/planbench.py",
-            "scripts/serving-sweep.sh"
+            "vulcan/config.py",
+            "README.md"
           ],
           "hit1": true,
           "hit3": true
@@ -176,176 +176,6 @@
     },
     "0.25": {
       "weight": 0.25,
-      "top1": 6,
-      "top3": 7,
-      "of": 7,
-      "detail": [
-        {
-          "question": "which module implements the semantic index",
-          "expected": "rag.py",
-          "top3": [
-            "vulcan/planbench.py",
-            "vulcan/cli.py",
-            "vulcan/rag.py"
-          ],
-          "hit1": false,
-          "hit3": true
-        },
-        {
-          "question": "where is persistent memory stored",
-          "expected": "memory.py",
-          "top3": [
-            "vulcan/memory.py",
-            "docs/spec.md",
-            "docs/spec.md"
-          ],
-          "hit1": true,
-          "hit3": true
-        },
-        {
-          "question": "which module talks to the LLM",
-          "expected": "llm.py",
-          "top3": [
-            "vulcan/llm.py",
-            "vulcan/llm.py",
-            "vulcan/planbench.py"
-          ],
-          "hit1": true,
-          "hit3": true
-        },
-        {
-          "question": "where are the sandboxed tools defined",
-          "expected": "tools.py",
-          "top3": [
-            "vulcan/tools.py",
-            "vulcan/tools.py",
-            "vulcan/planbench.py"
-          ],
-          "hit1": true,
-          "hit3": true
-        },
-        {
-          "question": "where is the ReAct agent loop",
-          "expected": "agent.py",
-          "top3": [
-            "vulcan/agent.py",
-            "vulcan/agent.py",
-            "vulcan/agent.py"
-          ],
-          "hit1": true,
-          "hit3": true
-        },
-        {
-          "question": "which module measures throughput",
-          "expected": "bench.py",
-          "top3": [
-            "vulcan/planbench.py",
-            "bench-results/demo-live.json",
-            "bench-results/radeon-vllm-concurrency.json"
-          ],
-          "hit1": true,
-          "hit3": true
-        },
-        {
-          "question": "where is runtime configuration loaded",
-          "expected": "config.py",
-          "top3": [
-            "vulcan/config.py",
-            "vulcan/planbench.py",
-            "vulcan/llm.py"
-          ],
-          "hit1": true,
-          "hit3": true
-        }
-      ]
-    },
-    "0.5": {
-      "weight": 0.5,
-      "top1": 6,
-      "top3": 7,
-      "of": 7,
-      "detail": [
-        {
-          "question": "which module implements the semantic index",
-          "expected": "rag.py",
-          "top3": [
-            "vulcan/planbench.py",
-            "vulcan/rag.py",
-            "vulcan/cli.py"
-          ],
-          "hit1": false,
-          "hit3": true
-        },
-        {
-          "question": "where is persistent memory stored",
-          "expected": "memory.py",
-          "top3": [
-            "vulcan/memory.py",
-            "README.md",
-            "docs/spec.md"
-          ],
-          "hit1": true,
-          "hit3": true
-        },
-        {
-          "question": "which module talks to the LLM",
-          "expected": "llm.py",
-          "top3": [
-            "vulcan/llm.py",
-            "vulcan/llm.py",
-            "bench-results/radeon-vllm-prefill.json"
-          ],
-          "hit1": true,
-          "hit3": true
-        },
-        {
-          "question": "where are the sandboxed tools defined",
-          "expected": "tools.py",
-          "top3": [
-            "vulcan/tools.py",
-            "vulcan/tools.py",
-            "vulcan/planbench.py"
-          ],
-          "hit1": true,
-          "hit3": true
-        },
-        {
-          "question": "where is the ReAct agent loop",
-          "expected": "agent.py",
-          "top3": [
-            "vulcan/agent.py",
-            "vulcan/agent.py",
-            "vulcan/agent.py"
-          ],
-          "hit1": true,
-          "hit3": true
-        },
-        {
-          "question": "which module measures throughput",
-          "expected": "bench.py",
-          "top3": [
-            "vulcan/planbench.py",
-            "bench-results/demo-live.json",
-            "bench-results/radeon-vllm-concurrency.json"
-          ],
-          "hit1": true,
-          "hit3": true
-        },
-        {
-          "question": "where is runtime configuration loaded",
-          "expected": "config.py",
-          "top3": [
-            "vulcan/config.py",
-            "vulcan/planbench.py",
-            "vulcan/llm.py"
-          ],
-          "hit1": true,
-          "hit3": true
-        }
-      ]
-    },
-    "1.0": {
-      "weight": 1.0,
       "top1": 5,
       "top3": 7,
       "of": 7,
@@ -354,9 +184,9 @@
           "question": "which module implements the semantic index",
           "expected": "rag.py",
           "top3": [
-            "vulcan/planbench.py",
+            "vulcan/ragbench.py",
             "vulcan/rag.py",
-            "README.md"
+            "scripts/followup.py"
           ],
           "hit1": false,
           "hit3": true
@@ -367,7 +197,7 @@
           "top3": [
             "vulcan/memory.py",
             "README.md",
-            "docs/spec.md"
+            "scripts/followup.py"
           ],
           "hit1": true,
           "hit3": true
@@ -376,11 +206,11 @@
           "question": "which module talks to the LLM",
           "expected": "llm.py",
           "top3": [
-            "bench-results/radeon-vllm-prefill.json",
-            "bench-results/radeon-vllm-concurrency.json",
+            "vulcan/llm.py",
+            "vulcan/planbench.py",
             "vulcan/llm.py"
           ],
-          "hit1": false,
+          "hit1": true,
           "hit3": true
         },
         {
@@ -388,8 +218,8 @@
           "expected": "tools.py",
           "top3": [
             "vulcan/tools.py",
-            "vulcan/tools.py",
-            "vulcan/planbench.py"
+            "vulcan/ragbench.py",
+            "vulcan/tools.py"
           ],
           "hit1": true,
           "hit3": true
@@ -410,8 +240,8 @@
           "expected": "bench.py",
           "top3": [
             "vulcan/planbench.py",
-            "bench-results/demo-live.json",
-            "bench-results/radeon-vllm-concurrency.json"
+            "vulcan/ragbench.py",
+            "docs/spec.md"
           ],
           "hit1": true,
           "hit3": true
@@ -420,12 +250,182 @@
           "question": "where is runtime configuration loaded",
           "expected": "config.py",
           "top3": [
+            "vulcan/ragbench.py",
             "vulcan/config.py",
+            "README.md"
+          ],
+          "hit1": false,
+          "hit3": true
+        }
+      ]
+    },
+    "0.5": {
+      "weight": 0.5,
+      "top1": 4,
+      "top3": 6,
+      "of": 7,
+      "detail": [
+        {
+          "question": "which module implements the semantic index",
+          "expected": "rag.py",
+          "top3": [
+            "vulcan/ragbench.py",
+            "vulcan/rag.py",
+            "scripts/followup.py"
+          ],
+          "hit1": false,
+          "hit3": true
+        },
+        {
+          "question": "where is persistent memory stored",
+          "expected": "memory.py",
+          "top3": [
+            "vulcan/memory.py",
+            "vulcan/ragbench.py",
+            "README.md"
+          ],
+          "hit1": true,
+          "hit3": true
+        },
+        {
+          "question": "which module talks to the LLM",
+          "expected": "llm.py",
+          "top3": [
+            "vulcan/llm.py",
             "vulcan/planbench.py",
             "vulcan/llm.py"
           ],
           "hit1": true,
           "hit3": true
+        },
+        {
+          "question": "where are the sandboxed tools defined",
+          "expected": "tools.py",
+          "top3": [
+            "vulcan/ragbench.py",
+            "vulcan/tools.py",
+            "vulcan/tools.py"
+          ],
+          "hit1": false,
+          "hit3": true
+        },
+        {
+          "question": "where is the ReAct agent loop",
+          "expected": "agent.py",
+          "top3": [
+            "vulcan/agent.py",
+            "vulcan/agent.py",
+            "vulcan/agent.py"
+          ],
+          "hit1": true,
+          "hit3": true
+        },
+        {
+          "question": "which module measures throughput",
+          "expected": "bench.py",
+          "top3": [
+            "vulcan/planbench.py",
+            "vulcan/ragbench.py",
+            "README.md"
+          ],
+          "hit1": true,
+          "hit3": true
+        },
+        {
+          "question": "where is runtime configuration loaded",
+          "expected": "config.py",
+          "top3": [
+            "vulcan/ragbench.py",
+            "README.md",
+            "vulcan/planbench.py"
+          ],
+          "hit1": false,
+          "hit3": false
+        }
+      ]
+    },
+    "1.0": {
+      "weight": 1.0,
+      "top1": 4,
+      "top3": 6,
+      "of": 7,
+      "detail": [
+        {
+          "question": "which module implements the semantic index",
+          "expected": "rag.py",
+          "top3": [
+            "vulcan/ragbench.py",
+            "vulcan/rag.py",
+            "scripts/followup.py"
+          ],
+          "hit1": false,
+          "hit3": true
+        },
+        {
+          "question": "where is persistent memory stored",
+          "expected": "memory.py",
+          "top3": [
+            "vulcan/memory.py",
+            "vulcan/ragbench.py",
+            "README.md"
+          ],
+          "hit1": true,
+          "hit3": true
+        },
+        {
+          "question": "which module talks to the LLM",
+          "expected": "llm.py",
+          "top3": [
+            "vulcan/llm.py",
+            "vulcan/planbench.py",
+            "vulcan/llm.py"
+          ],
+          "hit1": true,
+          "hit3": true
+        },
+        {
+          "question": "where are the sandboxed tools defined",
+          "expected": "tools.py",
+          "top3": [
+            "vulcan/ragbench.py",
+            "vulcan/tools.py",
+            "vulcan/tools.py"
+          ],
+          "hit1": false,
+          "hit3": true
+        },
+        {
+          "question": "where is the ReAct agent loop",
+          "expected": "agent.py",
+          "top3": [
+            "vulcan/agent.py",
+            "vulcan/agent.py",
+            "vulcan/agent.py"
+          ],
+          "hit1": true,
+          "hit3": true
+        },
+        {
+          "question": "which module measures throughput",
+          "expected": "bench.py",
+          "top3": [
+            "vulcan/planbench.py",
+            "vulcan/ragbench.py",
+            "README.md"
+          ],
+          "hit1": true,
+          "hit3": true
+        },
+        {
+          "question": "where is runtime configuration loaded",
+          "expected": "config.py",
+          "top3": [
+            "vulcan/ragbench.py",
+            "README.md",
+            "vulcan/planbench.py"
+          ],
+          "hit1": false,
+          "hit3": false
         }
       ]
     }

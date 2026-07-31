@@ -61,6 +61,25 @@ def test_venv_dirs_detects_oddly_named_env(tmp_path: Path):
     assert rag._venv_dirs(tmp_path) == {odd}
 
 
+def test_build_indexes_source_and_not_its_own_output(tmp_path: Path, monkeypatch):
+    """Benchmark JSON outranked real code until it stopped being indexed as code."""
+    root = tmp_path / "repo"
+    (root / "bench-results").mkdir(parents=True)
+    (root / ".pytest_cache").mkdir()
+    (root / "privacy.py").write_text("def record_hosts(): ...\n")
+    (root / "package.json").write_text('{"name": "x"}\n')
+    (root / "bench-results" / "decode.json").write_text('{"ttft": 0.3}\n')
+    (root / ".pytest_cache" / "README.md").write_text("cache\n")
+
+    cfg = Config(data_dir=tmp_path / "data")
+    idx = rag.Index(cfg, _ScriptedLLM([]), "t")
+    seen: list[str] = []
+    monkeypatch.setattr(idx, "_flush", lambda texts, meta: seen.extend(m[0] for m in meta) or len(meta))
+    idx.build(root)
+
+    assert sorted(seen) == ["package.json", "privacy.py"]
+
+
 def test_bench_compare(tmp_path: Path):
     base = {"label": "laptop", "runs": {
         "short": {"ttft_s_median": 1.0, "chunks_per_s_median": 20.0},

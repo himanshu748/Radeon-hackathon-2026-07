@@ -260,10 +260,18 @@ interactive viewer.
 On a ROCm container, which has no reason to ship OpenGL libraries, this fails
 with `AttributeError: 'NoneType' object has no attribute 'eglQueryString'` from
 inside PyOpenGL, which never mentions the real cause. Reported upstream as
-[genesis-world#3129](https://github.com/Genesis-Embodied-AI/genesis-world/issues/3129),
-scoped deliberately to the error message: a previous request to disable the
-visualizer outright was rejected by the maintainers, and this asks only that the
-failure name its cause and the packages that fix it.
+[genesis-world#3129](https://github.com/Genesis-Embodied-AI/genesis-world/issues/3129)
+and closed as intended: OpenGL support is not optional even with nothing to
+render, so Genesis detects it early and raises when it is absent.
+
+That answer is about the rendering being mandatory, and it leaves the error
+message where it was, because what the early check raises is the PyOpenGL
+`AttributeError` above. So the second half went upstream as a patch instead of
+an argument:
+[genesis-world#3145](https://github.com/Genesis-Embodied-AI/genesis-world/pull/3145)
+probes the EGL library where the platform plugin is already validated, and
+reports the cause with the packages that fix it and the OSMesa alternative,
+keeping the original error as `__cause__`.
 
 This is why Chaal keeps rendering out of the training path entirely, and why
 `chaal doctor` checks for a GL platform before any GPU time is spent.
@@ -272,8 +280,15 @@ This is why Chaal keeps rendering out of the training path entirely, and why
 
 | what | where |
 |---|---|
-| Unactionable GL error on ROCm containers, with reproduction and fix | [genesis-world#3129](https://github.com/Genesis-Embodied-AI/genesis-world/issues/3129) (new issue) |
+| An actionable error when the EGL library cannot be loaded | [genesis-world#3145](https://github.com/Genesis-Embodied-AI/genesis-world/pull/3145) (pull request) |
+| Unactionable GL error on ROCm containers, with reproduction | [genesis-world#3129](https://github.com/Genesis-Embodied-AI/genesis-world/issues/3129) (issue, closed as intended) |
 | Measured evidence for the friction max-combination problem | [genesis-world#2718](https://github.com/Genesis-Embodied-AI/genesis-world/issues/2718#issuecomment-5121670728) (comment) |
+
+The EGL contribution is a patch rather than a request because the issue behind it
+came back with a design answer: rendering is mandatory on purpose. The half of the
+report that survived that answer, an early check whose exception names its cause,
+was small enough to write, so it was written and tested against both shapes a
+failed library load takes.
 
 The friction finding was independently derived here, but an existing open issue
 already identified the `max()` behaviour and proposed MuJoCo's `geom_priority` as

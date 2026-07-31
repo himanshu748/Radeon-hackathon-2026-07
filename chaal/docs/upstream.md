@@ -59,6 +59,22 @@ apt-get install -y libegl1 libegl-mesa0 libgl1-mesa-dri libosmesa6
 been added and no viewer is shown, or catch the failure and re-raise it with the
 cause and the apt line above.
 
+**Outcome.** Reported as
+[genesis-world#3129](https://github.com/Genesis-Embodied-AI/genesis-world/issues/3129)
+and closed as intended behaviour. The maintainer's answer: OpenGL support is not
+optional even when no window is created, so Genesis detects support early and
+raises if it is absent.
+
+That settles the first half of the suggested fix and leaves the second standing,
+because what the early check actually raises is a PyOpenGL `AttributeError`. The
+message was therefore sent as a patch rather than argued as an issue:
+[genesis-world#3145](https://github.com/Genesis-Embodied-AI/genesis-world/pull/3145)
+probes the library where the plugin is already being validated, and reports the
+cause with the packages above and the OSMesa alternative. Verified against both
+shapes a failed `dlopen` takes, the `AttributeError` at the top of this section
+and the `ImportError: Unable to load EGL library` that current PyOpenGL raises
+instead.
+
 ---
 
 ## 2. `set_friction()` on one entity silently does nothing

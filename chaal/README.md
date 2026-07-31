@@ -133,7 +133,10 @@ Both are in [docs/upstream.md](docs/upstream.md) with reproductions.
 **Genesis cannot build a scene without an OpenGL context**, even with
 `show_viewer=False` and no cameras, and on a ROCm container the failure is a
 PyOpenGL `AttributeError` that never mentions the real cause. Reported as
-[genesis-world#3129](https://github.com/Genesis-Embodied-AI/genesis-world/issues/3129).
+[genesis-world#3129](https://github.com/Genesis-Embodied-AI/genesis-world/issues/3129)
+and closed as intended, the rendering being mandatory by design. The error
+message was the part left standing, so it went upstream as a patch:
+[genesis-world#3145](https://github.com/Genesis-Embodied-AI/genesis-world/pull/3145).
 
 **`set_friction()` on one entity does nothing.** Genesis resolves a contact pair
 by taking the larger of the two surfaces' friction, so changing only the robot

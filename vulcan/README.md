@@ -2,6 +2,29 @@
 
 A private developer-productivity agent. It indexes your codebase, then reasons, searches, reads, runs tests and answers with cited context, with **every token generated on hardware you control**, never a third-party LLM API. Built for the AMD AI DevMaster Hackathon, Track 2: Development & Local Deployment of Private AI Agents. Inference runs on AMD Radeon GPUs via ROCm.
 
+## Quantization is a capacity decision here, not a speed one
+
+AWQ on Qwen3-8B was measured and rejected: 0.68x of fp16 throughput, because a
+48 GB card serving an 8B model has no memory problem to solve. The same card
+tells the opposite story on a model that does not fit:
+
+| | fp16 | Q4_K_M |
+|---|---|---|
+| Qwen3-32B weights | 61.1 GB | **18.4 GB** |
+| Fits in 49,136 MB VRAM | **no** | yes |
+
+Served on the Radeon through llama.cpp built for ROCm, all 64 layers on the GPU,
+reachable over the Radeon Cloud API by changing one environment variable:
+
+```bash
+export VULCAN_BASE_URL=https://<host>/spaces/<instance>/8000/v1
+export VULCAN_MODEL=Qwen3-32B-Q4_K_M
+vulcan ask "which module implements the semantic index?"
+```
+
+Evidence in `bench-results/quantization.json` and
+`bench-results/radeon-llamacpp-qwen3-32b-q4.json`.
+
 ## Prove it, do not trust it
 
 ```bash

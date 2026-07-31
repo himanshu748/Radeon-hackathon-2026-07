@@ -461,6 +461,68 @@ the right call on a smaller card, or for a model in the 30B-plus range where
 fp16 stops fitting in 48 GB, and this measurement is what says which regime you
 are in.
 
+### 4.4 Quantization: rejected on one model, required on another
+
+Section 4.3 rejected AWQ. On Qwen3-8B it returned 0.68x of fp16 throughput at
+every concurrency level, because a 48 GB card serving an 8B model has no memory
+problem to buy its way out of. That conclusion stands, and it is only half the
+picture.
+
+**Quantization on this card is a capacity decision, not a speed one.** The test
+is a model that fp16 cannot hold at all:
+
+| | fp16 | Q4_K_M |
+|---|---|---|
+| Qwen3-32B weights | 61.1 GB (32.8B params x 2 bytes) | **18.4 GB** |
+| Fits in 49,136 MB of VRAM | **no** | yes |
+| Measured VRAM in use | n/a | 27,002 MB |
+
+Loaded and served on the Radeon, with every layer on the GPU rather than spilled
+to host memory:
+
+```
+llama_kv_cache: layer  0..63: dev = ROCm0        all 64 layers
+ROCm0 model buffer size   = 18423.65 MiB
+ROCm0 KV buffer size      =  4096.00 MiB         (n_ctx 16384)
+ROCm0 compute buffer size =  2136.01 MiB
+```
+
+VRAM goes from 26 MB idle to 27,002 MB loaded. The numbers above are captured
+from the running server into `bench-results/quantization.json` rather than typed
+in.
+
+**Serving.** llama-cpp-python 0.3.34 built from source against ROCm 7.2.4 with
+`-DGGML_HIP=ON -DAMDGPU_TARGETS=gfx1100`. The resulting `libggml-hip.so` links
+`libamdhip64`, `librocblas` and `libhipblas`, which is what distinguishes a real
+HIP build from a CPU one that merely imports. It exposes an OpenAI-compatible
+API on port 8000, which the Radeon Cloud spaces proxy publishes, so Vulcan
+reaches it by changing one environment variable and no code.
+
+Throughput, `bench-results/radeon-llamacpp-qwen3-32b-q4.json`:
+
+| prompt | TTFT | generation |
+|---|---|---|
+| short | 1.287 s | 26.8 chunks/s |
+| medium | 0.369 s | 21.2 chunks/s |
+| long | 1.772 s | 23.3 chunks/s |
+
+These are single-stream figures from a different server on a different model
+size, so they are **not** comparable to the vLLM concurrency table in 4.3 and are
+not presented as an improvement on it. The claim here is narrower and stronger:
+a model that does not fit at all in fp16 runs, on the GPU, through the cloud API,
+and answers a real agent task correctly in 53 seconds.
+
+**A trap worth writing down.** The first attempt served the model with
+`--chat_format chatml`. Qwen3's GGUF ships its own template, which also honours
+`enable_thinking`, and forcing chatml over it stripped the tool protocol out of
+the system prompt. The agent then made no tool calls at all and answered from
+prior belief, citing `vulcan/search/index.py` and `vulcan/memory/persistence.py`,
+neither of which exists. Dropping the flag so the GGUF template is used produced
+`search_code` followed by the correct answer, `vulcan/rag.py` and
+`vulcan/memory.py`. The failure looked like a weak quantized model and was
+actually a wrong flag, which is a good reason to check citations against the
+filesystem rather than trusting fluent output.
+
 ### 4.5 What was not measured, and why
 
 Stating the boundary rather than implying the map is complete:

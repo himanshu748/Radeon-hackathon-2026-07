@@ -62,3 +62,19 @@ def check(cfg, hosts: list[str]) -> dict:
         "unexpected": unexpected,
         "private": not unexpected,
     }
+
+
+def mask_endpoint(url: str) -> str:
+    """Elide the instance id from a Radeon Cloud URL.
+
+    The instance id is the whole path to someone else's GPU budget: the tunnel
+    takes no credentials, so the URL is the credential. It was already elided in
+    the terminal banner, but `vulcan bench` wrote `cfg.base_url` verbatim into
+    every result file, and those files are committed. The id reached a public
+    repository that way. Masking belongs at the point of serialisation, not at
+    the point of display.
+    """
+    head, _, tail = url.rstrip("/").rpartition("/spaces/")
+    if not head:
+        return url
+    return f"{head}/spaces/<instance>/" + tail.split("/", 1)[-1]

@@ -20,16 +20,10 @@ console = Console()
 
 
 def _masked(url: str) -> str:
-    """Show enough of the endpoint to identify it, not enough to reuse it.
+    """See privacy.mask_endpoint. Kept as a thin alias for the banner."""
+    from .privacy import mask_endpoint
 
-    The instance id is the whole path to someone else's GPU budget. It ends up
-    in screenshots, screen recordings and CI logs, so the banner prints the host
-    and elides the rest.
-    """
-    head, _, tail = url.rstrip("/").rpartition("/spaces/")
-    if not head:
-        return url
-    return f"{head}/spaces/<instance>/" + tail.split("/", 1)[-1]
+    return mask_endpoint(url)
 
 
 @app.command()

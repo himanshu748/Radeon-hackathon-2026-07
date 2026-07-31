@@ -194,3 +194,23 @@ def test_privacy_check_passes_when_only_configured_hosts_are_used(monkeypatch):
             c.get("http://localhost:11434/v1/models")
     r = privacy.check(cfg, hosts)
     assert r["private"] and not r["unexpected"]
+
+
+def test_bench_results_never_carry_the_instance_id():
+    """The id is the credential: the tunnel takes none. It reached a public
+    repo once by being serialised verbatim into a committed result file."""
+    from vulcan.privacy import mask_endpoint
+    # A synthetic id on purpose: a test that hardcodes the real one puts it
+    # back in the repository, which is the leak this test exists to prevent.
+    url = "https://radeon-global.anruicloud.com/spaces/u-0000-testfixture/8000/v1"
+    masked = mask_endpoint(url)
+    assert "testfixture" not in masked
+    assert masked.endswith("/spaces/<instance>/8000/v1")
+    assert mask_endpoint("http://localhost:11434/v1") == "http://localhost:11434/v1"
+
+
+def test_no_committed_bench_result_leaks_an_instance_id():
+    import json, re
+    from pathlib import Path
+    for f in Path("bench-results").glob("*.json"):
+        assert not re.search(r"/spaces/u-[0-9a-z]{3,}-", f.read_text()), f

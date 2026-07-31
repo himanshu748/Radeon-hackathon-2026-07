@@ -14,6 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from .config import Config
+from .privacy import mask_endpoint
 from .llm import LLM
 
 PROMPTS = {
@@ -27,7 +28,7 @@ def run(cfg: Config, label: str, repeats: int = 3, out_dir: Path | None = None) 
     llm = LLM(cfg)
     results: dict = {
         "label": label,
-        "base_url": cfg.base_url,
+        "base_url": mask_endpoint(cfg.base_url),
         "model": cfg.model,
         "platform": platform.platform(),
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -70,7 +71,7 @@ def run_concurrency(
     prompt = PROMPTS["medium"]
     results: dict = {
         "label": label,
-        "base_url": cfg.base_url,
+        "base_url": mask_endpoint(cfg.base_url),
         "model": cfg.model,
         "platform": platform.platform(),
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -121,7 +122,7 @@ def run_prefill(
     ).split()
     results: dict = {
         "label": label,
-        "base_url": cfg.base_url,
+        "base_url": mask_endpoint(cfg.base_url),
         "model": cfg.model,
         "platform": platform.platform(),
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),

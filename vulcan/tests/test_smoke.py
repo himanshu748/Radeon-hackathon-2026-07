@@ -155,3 +155,42 @@ def test_history_is_bounded(tmp_path: Path, monkeypatch):
         a.run(f"question {i} " + "x" * 500)
     assert sum(len(m["content"]) for m in a.history) <= agent_mod.HISTORY_CHARS + 4000
     assert len(a.history) >= 2
+
+
+def test_privacy_check_detects_a_third_party_call(monkeypatch):
+    """A check that cannot fail proves nothing. Make it fail on purpose."""
+    import httpx
+    from vulcan import privacy
+
+    # Never actually leave the machine: the transport is faked, but the request
+    # still travels the same httpx.Client.send path the hook watches.
+    def fake_send(self, request, **kwargs):
+        return httpx.Response(200, request=request)
+
+    monkeypatch.setattr(httpx.Client, "send", fake_send, raising=True)
+    cfg = Config(base_url="http://localhost:11434/v1")
+
+    with privacy.record_hosts() as hosts:
+        with httpx.Client() as c:
+            c.get("http://localhost:11434/v1/models")
+            c.get("https://api.openai.com/v1/models")
+
+    r = privacy.check(cfg, hosts)
+    assert r["requests"] == 2
+    assert "api.openai.com" in r["unexpected"]
+    assert not r["private"]
+
+
+def test_privacy_check_passes_when_only_configured_hosts_are_used(monkeypatch):
+    import httpx
+    from vulcan import privacy
+
+    monkeypatch.setattr(httpx.Client, "send",
+                        lambda self, request, **kw: httpx.Response(200, request=request))
+    cfg = Config(base_url="http://localhost:11434/v1",
+                 embed_base_url="http://localhost:11434/v1")
+    with privacy.record_hosts() as hosts:
+        with httpx.Client() as c:
+            c.get("http://localhost:11434/v1/models")
+    r = privacy.check(cfg, hosts)
+    assert r["private"] and not r["unexpected"]

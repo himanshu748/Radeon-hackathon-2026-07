@@ -105,6 +105,36 @@ export VULCAN_MODEL=qwen3:4b-instruct
 - Hybrid retrieval: dense cosine plus literal term overlap
 - Persistent memory across sessions per project
 - Backend-agnostic: same agent on Ollama, llama.cpp or vLLM-ROCm
+- Privacy that can be checked rather than believed: `vulcan privacy-check`
+
+### 3.0 The privacy claim is testable
+
+This track is about private agents, and the claim that no token reaches a third
+party is the whole proposition. Stated in a README it is not evidence: the code
+looks local, the document says local, and a reader has to take both on trust.
+
+`vulcan privacy-check` runs a real task with every outbound request recorded,
+and reports each host against the endpoints actually configured:
+
+```
+Outbound traffic during one agent run
+host       allowed
+localhost  yes
+4 request(s); allowed endpoints: localhost
+No traffic left the configured endpoints.
+```
+
+It hooks `httpx.Client.send`, the one choke point all of this project's traffic
+passes through, so a call site added later is covered without anyone remembering
+to update a list. Two limits are stated rather than glossed: it sees Vulcan's own
+HTTP, and `run_cmd` executes the user's commands unsandboxed, so a test suite the
+agent runs could reach the network on its own account. And a local endpoint is
+trusted because it is the one you configured; point `VULCAN_BASE_URL` at a hosted
+API and the check will faithfully name that host, which is the point of it.
+
+A check that cannot fail proves nothing, so the test suite makes it fail: a
+deliberate request to `api.openai.com` inside the recorder must be reported as
+unexpected.
 
 ### 3.1 Retrieval is hybrid, and the weight was swept
 

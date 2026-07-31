@@ -2,6 +2,16 @@
 
 A private developer-productivity agent. It indexes your codebase, then reasons, searches, reads, runs tests and answers with cited context, with **every token generated on hardware you control**, never a third-party LLM API. Built for the AMD AI DevMaster Hackathon, Track 2: Development & Local Deployment of Private AI Agents. Inference runs on AMD Radeon GPUs via ROCm.
 
+## Prove it, do not trust it
+
+```bash
+vulcan privacy-check
+```
+
+Runs a real task with every outbound request recorded and fails if anything
+outside your configured endpoints is contacted. The claim that no token reaches
+a third party is the point of this tool, so it is checkable rather than stated.
+
 ## Why local
 
 Your code never leaves machines you control. Agent reasoning and generation run

@@ -6,6 +6,7 @@ from pathlib import Path
 import typer
 from rich.console import Console
 from rich.panel import Panel
+from rich.table import Table
 
 from . import bench as bench_mod
 from .agent import Agent
@@ -149,3 +150,43 @@ def rag_bench(
     from .ragbench import sweep
 
     sweep(name, str(out))
+
+
+@app.command("privacy-check")
+def privacy_check(
+    question: str = "Which module implements the semantic index?",
+    root: Path = Path("."),
+    name: str = "default",
+) -> None:
+    """Run a real task and report every host the agent contacted.
+
+    The claim this track rests on is that no token reaches a third party. This
+    makes that checkable: it fails if anything outside the configured endpoints
+    is contacted.
+    """
+    from .privacy import check, record_hosts
+
+    cfg = load()
+    agent = Agent(cfg, root.resolve(), name)
+    with record_hosts() as hosts:
+        answer = agent.run(question, on_step=show_step)
+
+    r = check(cfg, hosts)
+    table = Table(title="Outbound traffic during one agent run")
+    table.add_column("host")
+    table.add_column("allowed")
+    for h in r["hosts_contacted"]:
+        ok = h in r["hosts_allowed"]
+        table.add_row(h, "[green]yes[/green]" if ok else "[red]NO[/red]")
+    console.print(table)
+    console.print(f"[dim]{r['requests']} request(s); allowed endpoints: "
+                  f"{', '.join(r['hosts_allowed'])}[/dim]")
+    console.print(Panel(answer, border_style="cyan"))
+
+    if r["private"]:
+        console.print("[green]No traffic left the configured endpoints.[/green]")
+        console.print("[dim]Covers Vulcan's own HTTP. `run_cmd` runs your commands, "
+                      "which are not sandboxed.[/dim]")
+    else:
+        console.print(f"[red]Unexpected hosts: {', '.join(r['unexpected'])}[/red]")
+        raise typer.Exit(1)

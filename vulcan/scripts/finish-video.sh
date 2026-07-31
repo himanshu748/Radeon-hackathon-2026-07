@@ -11,6 +11,9 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 RAW="${RAW:-demo-raw.mp4}"
+# Second segment, recorded against the local backend. Optional: without it
+# the video is exactly what it was before.
+CAPS="${CAPS:-capabilities-raw.mp4}"
 OUT="${OUT:-demo.mp4}"
 FONT="${FONT:-/System/Library/Fonts/Supplemental/Arial.ttf}"
 MONO="${MONO:-/System/Library/Fonts/Menlo.ttc}"
@@ -42,20 +45,32 @@ EOF
 cat > /tmp/vulcan-end.txt <<'EOF'
 Measured, not claimed
 
-Four tools chosen by the agent, on screen, unedited:
-search_code, run_cmd, grep, remember
-Memory written to disk and recalled in a fresh session
-
 Continuous batching on the Radeon, 1 to 8 concurrent:
 8.12x on stock settings, 4.07x with the batch capped at 4
 The capped run scales to exactly its own cap
 
-Same harness on an M4 Air with Ollama:
-one extra request LOWERS throughput, TTFT 4.36s to 42.21s
+Retrieval: lexical weight swept, not guessed
+top-1 4/7 dense only, 6/7 hybrid; 1.0 degrades again
+
+Task decomposition: built, measured, rejected
+neither model ever used it, 18 to 21s slower
+
+AWQ quantization: measured, rejected
+0.68x of fp16 on a card with no memory pressure
 
 Raw JSON for every number in bench-results/
 
 github.com/himanshu748/vulcan
+EOF
+
+cat > /tmp/vulcan-caps.txt <<'EOF'
+The same agent, on a second backend
+
+Everything so far ran on the Radeon through vLLM on ROCm.
+What follows runs against a local Ollama endpoint instead,
+which is the backend-agnostic claim being exercised.
+
+No code changes. One environment variable.
 EOF
 
 echo "==> rendering cards"
@@ -66,8 +81,21 @@ echo "==> normalising the recording"
 ffmpeg -hide_banner -loglevel error -y -i "$RAW" \
   -c:v libx264 -pix_fmt yuv420p -r "$FPS" -an /tmp/vulcan-body.mp4
 
+PARTS=(/tmp/vulcan-title.mp4 /tmp/vulcan-body.mp4)
+if [ -f "$CAPS" ]; then
+  echo "==> second segment"
+  card /tmp/vulcan-caps.txt 6 /tmp/vulcan-caps.mp4
+  # VHS pads the tail with idle black once output stops; trim it so the video
+  # does not sit on a blank screen.
+  caps_dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$CAPS" | cut -d. -f1)
+  ffmpeg -hide_banner -loglevel error -y -i "$CAPS" -t "$((caps_dur - 3))" \
+    -c:v libx264 -pix_fmt yuv420p -r "$FPS" -an -vf "scale=${W}:${H}" /tmp/vulcan-caps-body.mp4
+  PARTS+=(/tmp/vulcan-caps.mp4 /tmp/vulcan-caps-body.mp4)
+fi
+PARTS+=(/tmp/vulcan-end.mp4)
+
 echo "==> concatenating"
-printf "file '%s'\n" /tmp/vulcan-title.mp4 /tmp/vulcan-body.mp4 /tmp/vulcan-end.mp4 > /tmp/vulcan-concat.txt
+printf "file '%s'\n" "${PARTS[@]}" > /tmp/vulcan-concat.txt
 ffmpeg -hide_banner -loglevel error -y -f concat -safe 0 -i /tmp/vulcan-concat.txt -c copy "$OUT"
 
 dur=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$OUT" | cut -d. -f1)
@@ -76,4 +104,4 @@ echo "==> $OUT  ($((dur/60))m $((dur%60))s)"
 ls -lh "$OUT"
 [ "$dur" -ge 180 ] && [ "$dur" -le 300 ] \
   && echo "    inside the 3 to 5 minute window" \
-  || echo "    WARNING: outside the 3 to 5 minute window, adjust sleeps in scripts/demo.tape"
+  || { echo "    FAILED: outside the 3 to 5 minute window"; exit 1; }

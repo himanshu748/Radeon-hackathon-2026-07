@@ -1,6 +1,6 @@
 # Dukaan
 
-### One product photo in, a shop's worth of creatives out. Generated on AMD Radeon.
+### One product photo into three still-image advertising creatives, using AMD Radeon.
 
 **Track 1, Development of Multimodal Content Creation Tools**
 himanshu748 | Radeon PRO gfx1100, 48 GB | ROCm 7.2.4 | LTX-2.3 22B
@@ -9,25 +9,26 @@ himanshu748 | Radeon PRO gfx1100, 48 GB | ROCm 7.2.4 | LTX-2.3 22B
 
 ## The problem
 
-A shopkeeper photographs stock in ten seconds. Turning that into something
-postable takes an afternoon in a design tool, per product, every time the
-catalogue turns over. Tools that close the gap usually generate the product too,
-which is the wrong trade: a seller cannot post a picture of a bangle that is not
-the bangle they will ship.
+A shopkeeper can photograph stock quickly, but adapting one photo into legible
+feed, story, and banner layouts still takes design work. Generative tools can
+also change the product being advertised, so their output must be reviewed
+against the item the seller will actually ship.
 
 ## What Dukaan does
 
 ![square](gallery/brass-ewer-square.png)
 
-One photo becomes a square for the feed, a 9:16 for stories, a wide banner for a
-shop header, and a short clip with generated ambient audio. The product is
-carried through untouched. The price and phone number are composited with real
-type, never drawn by a model.
+One photo becomes a square for the feed, a 9:16 story, and a wide banner for a
+shop header. Candidate frames, a GIF preview, and optional audio can be retained
+for inspection and relabelling; they are not claimed as finished moving-media
+deliverables. The price and phone number are composited with Pillow after
+inference, never drawn by the model.
 
-**The GPU runs once per pack, not once per format.** Three formats are three
-different moments of the same generated clip.
+**The GPU backend is invoked once per pack, not once per format.** Three formats
+select different moments from the same candidate sequence. The optional refine
+setting performs an additional denoise pass inside that invocation.
 
-One photo, four looks, the product identical in every one:
+One submitted photo across four fixed style presets:
 
 ![four styles](gallery/one-photo-four-styles.png)
 
@@ -52,7 +53,7 @@ as a network fault.
 | phase | peak container RAM | wall |
 |---|---|---|
 | encode, text encoder only | 35.4 GB | 33 s |
-| sample, checkpoint only | 51.2 GB | 55 s |
+| sample, checkpoint only | 49.9 GB in the committed benchmark | about 55 s |
 | *stock template, one process* | *trips 55 GB, restarts* | *n/a* |
 
 Peak becomes `max(43, 23)`, not `43 + 23`.
@@ -72,7 +73,9 @@ sampler's output in place).
 | 768x768, refined | **1536x1536** | 176.1 s | 49.9 GB |
 | 3 products, one batch | 768x768 | **134.3 s** | 49.9 GB |
 
-Every run holds under the 55 GB cap. `dukaan bench` reproduces the table.
+The committed runs held under the 55 GB cap. `dukaan bench` reruns the matrix on
+configured hardware; these historical measurements are not a performance
+guarantee.
 
 Transport was a bottleneck too: 49 frames as 49 base64 requests took 3 m 34 s
 and reset the tunnel twice. One tar brought it to 2 m 19 s.
@@ -85,11 +88,12 @@ generate. A shop packing fifty items one at a time pays that fifty times.
 | | |
 |---|---|
 | 3 products, one batch | **134.3 s** |
-| 3 products, separately | 212.1 s |
+| 3 products, separately | 212.1 s estimated baseline |
 | per-product, across the batch | 36.3 s, then 28.0 s, then 26.6 s |
 
-The 13.8 s load is paid once, and per-product time then falls as the GPU warms,
-for identical work. A 37% saving on three; it grows with the catalogue.
+The 13.8 s load is paid once, and per-product time fell as the GPU warmed in the
+submitted batch. The 212.1-second comparison is calculated as three times the
+recorded 70.7-second single-product row; it is not three separately timed runs.
 
 ---
 
@@ -111,6 +115,8 @@ streaks.
 
 ![banner](gallery/silver-bracelet-banner.png)
 
-**26 tests, no GPU required.** Without an instance configured, the whole
-pipeline runs on CPU and writes real files, so the tool can be inspected before
-any spend. Apache-2.0. Demo photographs are CC0.
+**37 tests, no GPU required.** Without an instance configured, a deterministic
+CPU mock exercises command flow, file writing, layout, and selection. It does
+not validate LTX-2.3 quality, Radeon compatibility, product identity, or the
+historical benchmark. Generated creatives require review before publication.
+Apache-2.0. Demo photographs are CC0.

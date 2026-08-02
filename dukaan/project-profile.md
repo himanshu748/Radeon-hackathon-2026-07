@@ -23,13 +23,18 @@ places, and type that is legible at thumbnail size. That is an afternoon in a
 design tool, or a few hundred rupees to someone who owns one, per product, every
 time the stock changes.
 
-The tools that promise to close this gap mostly generate the product too. That
-is the wrong trade. A seller cannot post a picture of a bangle that is not the
-bangle they will ship. Whatever the model does, the object has to survive it.
+Generative tools can also change the product being advertised. That is a
+material risk for a seller who must show what they will actually ship. Dukaan
+reduces that risk by conditioning LTX-2.3 on a cutout plate, but it does not
+guarantee product identity: shape, texture, engraving, logos, colour, pose, or
+surrounding objects can drift and every generated creative requires review.
 
-Dukaan takes one photograph and returns a set of finished creatives plus a short
-clip with sound, generated on a Radeon GPU, with the product carried through
-untouched and the words composited rather than drawn.
+Dukaan takes one photograph and returns three still-image advertising
+creatives: a square, a story, and a banner. The implementation can also retain
+candidate frames, a GIF preview, and an optional WAV for inspection and
+relabelling; those are not claimed as finished moving-media deliverables. The
+seller's words are composited with Pillow after inference rather than drawn by
+the model.
 
 ## 2. Target users and application scenarios
 
@@ -45,7 +50,7 @@ commission artwork for it.
 |---|---|
 | New stock arrives, needs a feed post today | 1024x1024 square with headline, price line and contact |
 | Festival push, same products, seasonal look | Same photos re-run under the `festive` style, no re-shoot |
-| Story or reel slot | 1024x1820 still plus a 2-second clip with generated ambient audio |
+| Story slot | 1024x1820 still with headline, price line and contact |
 | Marketplace or shop-page header | 1820x1024 banner |
 | Price change | `dukaan relabel` recomposes the same stills with new type, no GPU |
 | Wrong moment in the shot | The browser UI's scrubber rebuilds from any of the 49 frames, no GPU |
@@ -79,7 +84,9 @@ decision in section 3.
     +-- composite headline, subline, contact strip
     |
     v
-  square / story / banner / clip.gif / clip.wav / manifest.json
+  square.png / story.png / banner.png / manifest.json
+
+  optional inspection artifacts: candidate frames / preview.gif / audio.wav
 ```
 
 **Transport.** The cloud exposes JupyterLab over HTTPS and nothing else: no ssh,
@@ -91,8 +98,9 @@ cannot take them down, and progress is read back from their logs.
 **Split of work.** Everything cheap and deterministic stays on the CPU on
 purpose. The cutout is a least-squares fit; the still selection is a Laplacian
 variance; the reshaping is an index map; the type is a font. Spending GPU
-credits on any of them would be waste. The GPU does the one thing with no CPU
-equivalent, and it does it **once per pack** rather than once per output.
+credits on any of them would be waste. The GPU backend is invoked **once per
+pack** rather than once per output format. The optional refine setting performs
+an additional denoise pass inside that backend invocation.
 
 ### 3.1 Two surfaces, one pipeline
 
@@ -101,13 +109,10 @@ price, look, button. It calls `build_pack`, the path the CLI uses, so the two
 surfaces cannot disagree about what the tool does. The rules list a web UI and a
 CLI plus demo workflow as valid delivery forms; this ships both.
 
-The scrubber is the part that only this architecture allows. Because the only
-generative model on the instance is a video model, a pack is not three renders,
-it is one generated scene with three moments lifted out of it. The other 46
-frames are already on disk and already paid for, so choosing a different one
-rebuilds the creative on the CPU in milliseconds and reports **0 seconds of
-GPU**. A tool built on an image model cannot offer that, because each candidate
-would be another generation.
+Because the prepared generative backend is a video model, one backend result
+contains a sequence of candidate frames rather than three independent still
+renders. The other 46 frames are already on disk, so choosing a different one
+rebuilds the creative on the CPU without another backend invocation.
 
 Measured through the UI against the live Radeon: 94.4 s for 49 frames at
 768x768, then rebuilding the square from moment 30 instead of moment 1 at no
@@ -119,9 +124,9 @@ another moment instead of paying for a re-roll.
 
 ### 4.1 LTX-2.3, and why the pipeline is shaped around it
 
-The instance carries exactly one generative model: `ltx-2.3-22b-dev`, an
+The prepared instance used for this submission carries `ltx-2.3-22b-dev`, an
 audio-video diffusion model, plus its Gemma 3 12B text encoder, a spatial
-upscaler and two LoRAs. There is no image-only model on disk.
+upscaler and two LoRAs. No image-only model was used by Dukaan.
 
 Fetching one is awkward rather than impossible, and the reason is worth
 recording for anyone else building on this hardware. The instance sits in
@@ -132,10 +137,9 @@ normally, so weights can be pulled through a mirror with
 `HF_ENDPOINT=https://hf-mirror.com`.
 
 Dukaan still uses LTX alone, by choice rather than by constraint. The 43 GB
-checkpoint is already on disk, and a video model turns out to be the better
-primitive for this job: if the generator produces moving scenes, stills are
-lifted out of a scene rather than generated one at a time, so three formats can
-look like three different shots for the cost of one generation. Adding a second
+checkpoint is already on disk, and a video model provides a useful primitive
+for this job: three layouts can select different moments from one candidate
+sequence rather than requesting three independent backend renders. Adding a second
 model would also mean a second 20-plus GB resident in a container that already
 cannot hold the pair it ships with, which is the constraint section 5 is about.
 
@@ -154,8 +158,9 @@ LTXVPreprocess -> LTXVImgToVideoInplace -> LTXVConcatAVLatent
 The sigma schedule and the 0.5 LoRA strength are taken from the shipped
 workflow, not tuned: the distilled LoRA is trained for that schedule.
 
-`strength=0.7` on `LTXVImgToVideoInplace` is the one lever deliberately kept
-low. It is what keeps the ewer an ewer.
+`strength=0.7` on `LTXVImgToVideoInplace` retains source conditioning while
+still allowing the model to change the product. It is not an identity
+guarantee, and the automatic frame selector does not detect identity drift.
 
 ### 4.2 Background removal by fitting, not sampling
 
@@ -175,6 +180,34 @@ differences against the fit:
 A plane was tried first. It cleared the top-to-bottom wash and left an
 elliptical pool of backdrop exactly where the product sits, because catalogue
 lighting pools rather than ramps. The quadratic basis is what fixed it.
+
+**Per-pixel thresholding is not enough on its own**, and the two ways it fails
+were both visible in an earlier version of the gallery. A light product on a lit
+sweep reads partly as backdrop, so the middle of it comes back full of holes: on
+the silver bracelet that was 14,497 pixels of the band. And a lobe of backdrop
+the fit cannot account for survives as a patch stuck to the product. Both are
+obvious once whole regions are considered instead of pixels, which is what
+`dukaan/regions.py` does: drop blobs far smaller than the product, then close
+background pockets that cannot reach the frame edge.
+
+The size limit on that second step matters more than it looks. A first version
+closed every enclosed pocket and nearly doubled the gilt bangles' mask, from
+14.7% of the frame to 28.2%, because **a bangle's interior is real backdrop and
+filling it turns two rings into two discs**. A teapot handle has the same
+property. Only pockets smaller than 2% of the product's own area are closed now.
+
+**A known limitation.** One of the sample photographs, the blue-and-white
+porcelain vase, has a vignette *behind* the object. No fit to the border ring
+can see it, and the lobe it leaves is genuinely fused to the vase, so no region
+filter can separate the two. A morphological opening was measured as a way out
+and rejected: at radius 6 the lobe still held 33,110 pixels and at radius 12
+still 15,403, while by radius 10 the brass ewer had lost 1.9% of frame, which
+is its spout and handle. Refitting the surface iteratively on non-product pixels
+was also measured, and made the lobe marginally worse while shrinking the silver
+bracelet's mask by 1.9%. Paying real product detail for a defect that survives
+anyway is a bad trade, so the opening ships disabled with its measurements next
+to it, and that photograph is not shown as if it were good output. The honest
+fix is a matting model, which section 8 lists as the next step.
 
 ### 4.3 Still selection
 
@@ -237,33 +270,25 @@ Peak becomes `max(43, 23)` instead of `43 + 23`. Measured on the box:
 | phase | peak container RAM | wall |
 |---|---|---|
 | encode | 35.4 GB | 33 s |
-| sample | 51.2 GB | 55 s |
+| sample | 49.9 GB in the committed benchmark | about 55 s |
 | stock template, one process | trips 55 GB, container restarts | n/a |
+
+An earlier development log reached 51.2 GB during sampling. The committed
+benchmark rows record 49.8 to 49.9 GB; both describe the same binding container
+memory limit, but only the committed JSON is used for the results table below.
 
 ### 5.3 Batching, the one lever that changes the shape of the cost
 
 Every other setting trades quality for time. Batching does not: it removes work
 that was never necessary.
 
-Loading the checkpoint costs about 17 seconds and the text encoder about 9, and
-neither depends on how much you then generate. A shop packing fifty items one
-photo at a time pays that toll fifty times. Dukaan's `catalogue` command encodes
-every prompt against one text-encoder load, then samples every plate against one
-checkpoint load:
-
-```
-[checkpoint-loaded]   17.1s
-[lora+audio-vae]      17.9s
-[sampled 1/3]         63.7s     first product: 45.8 s
-[sampled 2/3]         98.3s     second:        34.6 s
-[sampled 3/3]        121.5s     third:         23.2 s
-[models-evicted]     125.3s
-```
-
-Two effects compound. The load is paid once instead of three times, and
-per-product time then falls by half across the batch as the GPU warms, for
-identical work. Three products cost 125 s batched against roughly 186 s run
-separately.
+Loading the checkpoint and text encoder is fixed work. A shop packing fifty
+items one photo at a time pays that toll fifty times. Dukaan's `catalogue`
+command encodes every prompt against one text-encoder load, then samples every
+plate against one checkpoint load. The committed record is 134.3 GPU seconds
+for a three-product batch. Its 212.1-second independent-run comparison is an
+estimate calculated as three times the recorded 70.7-second single-product row;
+it is not three separately timed runs.
 
 The ordering this requires is worth stating: every product is **sampled** before
 anything is **decoded**. The VAE decode needs the 22B transformer out of VRAM,
@@ -283,8 +308,9 @@ audio stream, and the plain loader produced a 4-D tensor the model rejected.
 **VRAM eviction before the VAE decode.** ComfyUI's executor evicts models
 between nodes. Calling node classes directly skips that, so the 22B transformer
 was still resident when the VAE ran and the decode failed with 2.13 GB free out
-of 47.98. Calling `model_management.unload_all_models()` before the decode drops
-the container from 51.2 GB to 12.5 GB and frees the VRAM the decode needs.
+of 47.98. Calling `model_management.unload_all_models()` before the decode frees
+the VRAM the decode needs; one development log dropped container use from
+51.2 GB to 12.5 GB after eviction.
 Tiled decode (512 px spatial, 32-frame temporal chunks) bounds the peak.
 
 **`torch.inference_mode()` around the whole phase.** The LTX VAE updates the
@@ -317,19 +343,20 @@ per-run by construction and costs one file read per sample.
 | 768x768, 25 frames | 768x768 | 54.6 s | 49.9 GB | 0.27 |
 | 768x768, 49 frames | 768x768 | 70.7 s | 49.9 GB | 0.41 |
 | 768x768, 49 frames, refined | **1536x1536** | 176.1 s | 49.9 GB | 0.66 |
-| **3 products, one batch** | 768x768 | **134.3 s** | 49.9 GB | vs 212.1 s separately |
+| **3 products, one batch** | 768x768 | **134.3 s** | 49.9 GB | vs 212.1 s estimated independently |
 
-Reproduce with `dukaan bench <photo>`; the raw JSON is in `bench-results/`.
-Throughput rises with the size of the job because the 13.8 s model load is
-fixed, which is the whole argument for the batch.
+The raw historical record is in `bench-results/radeon-ltx.json`. `dukaan bench
+<photo>` reruns the benchmark matrix on the configured hardware; it does not
+promise the same numbers on another instance. Throughput in the submitted run
+rises with the size of the job because the 13.8 s model load is fixed.
 
 A single pack end to end, including the plate upload, both model loads, sampling,
 decode and pulling 49 frames plus a wav back over the tunnel, is about 2 m 20 s
 wall clock. Before frames were fetched as one tar it was 3 m 34 s, and the tunnel
 reset the connection twice mid-run.
 
-Batching measured on the same settings as row 3: 13.8 s of model load paid once,
-then 36.3 s, 28.0 s and 26.6 s for three identical products as the GPU warms.
+The committed batching JSON records 13.8 s of model load paid once, followed by
+sample times of 36.3 s, 28.0 s and 26.6 s across the three products.
 
 ### 5.7 Two template defects worth reporting upstream
 
@@ -357,7 +384,7 @@ ready
 device name, so the architecture, PCI model id and CU count stand in. They are
 what the driver will actually report.
 
-26 tests run with no GPU. They cover the cases that were genuinely wrong at some
+37 tests run with no GPU. They cover the cases that were genuinely wrong at some
 point: a graded backdrop, a product touching the frame edge, a cutout with a
 wide transparent margin rendering tiny, `thumbnail()` refusing to enlarge, a
 product running into the headline band, stills landing on the same frame, and
@@ -367,7 +394,14 @@ Without `DUKAAN_INSTANCE` the whole pipeline runs against a CPU mock and writes
 real files, so the tool can be inspected before any GPU spend. The mock is never
 a fallback: if an instance is configured and fails, the error surfaces.
 
+The CPU suite does not run LTX-2.3, contact a Radeon instance, verify the
+committed gallery, measure product identity, validate the historical benchmark,
+or prove quality on arbitrary phone photographs.
+
 ## 7. Results
 
-Nine creatives and three clips with audio, all generated on the Radeon, are in
-`docs/gallery.md`. Source, tests and the runner are in the repository.
+Twelve PNG creatives from submitted Radeon runs and three GIF previews are in
+`docs/gallery.md`. The PNGs demonstrate the three supported still-image output
+formats; the GIFs and optional audio are inspection artifacts rather than
+finished seller deliverables. Source, tests and the runner are in the
+repository.
